@@ -47,6 +47,11 @@ config CADENCE_QSPI
 	  used to access the SPI NOR flash on platforms embedding this
 	  Cadence IP core.
 
+config CAVIUM_SPI
+	bool "Cavium SPI driver"
+	help
+	  Enable the Cavium SPI driver. This driver can be used to
+	  access the SPI NOR flash on ThunderX SoC platforms.
 config DESIGNWARE_SPI
 	bool "Designware SPI driver"
 	help
