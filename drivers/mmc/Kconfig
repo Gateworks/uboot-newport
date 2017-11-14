@@ -30,6 +30,14 @@ config DM_MMC_OPS
 	  option will be removed as soon as all DM_MMC drivers use it, as it
 	  will the only supported behaviour.
 
+config MMC_CAVIUM
+	bool "Cavium ThunderX Multimedia Card Interface support"
+	depends on ARCH_THUNDERX
+	depends on DM_MMC
+	help
+	  This selects the Cavium ThunderX Multimedia card Interface.
+	  If you have an ThunderX board with a Multimedia Card slot,
+	  say Y here.  If unsure, say N.
 if MMC
 
 config SPL_MMC_TINY

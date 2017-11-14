@@ -5,7 +5,7 @@
 # SPDX-License-Identifier:	GPL-2.0+
 #
 
-obj-y += mmc.o
+obj-$(CONFIG_MMC) += mmc.o
 obj-$(CONFIG_DM_MMC) += mmc-uclass.o
 
 ifndef CONFIG_BLK
@@ -18,10 +18,13 @@ ifdef CONFIG_SPL_BUILD
 obj-$(CONFIG_SPL_MMC_BOOT) += fsl_esdhc_spl.o
 obj-$(CONFIG_SPL_SAVEENV) += mmc_write.o
 else
+ifndef CONFIG_MMC_CAVIUM
 obj-y += mmc_write.o
+endif
 endif
 
 obj-$(CONFIG_ARM_PL180_MMCI) += arm_pl180_mmci.o
+obj-$(CONFIG_MMC_CAVIUM)		+= cavium_mmc.o
 obj-$(CONFIG_MMC_DAVINCI)		+= davinci_mmc.o
 obj-$(CONFIG_MMC_DW)			+= dw_mmc.o
 obj-$(CONFIG_MMC_DW_EXYNOS)		+= exynos_dw_mmc.o

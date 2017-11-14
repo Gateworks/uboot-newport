@@ -33,6 +33,7 @@
 #define EXTRACT_SDMMC_CHANGE_VERSION(x)	\
 	((u32)(x) & 0xff)
 
+#define SD_VERSION_4		MAKE_SD_VERSION(4, 0, 0)
 #define SD_VERSION_3		MAKE_SD_VERSION(3, 0, 0)
 #define SD_VERSION_2		MAKE_SD_VERSION(2, 0, 0)
 #define SD_VERSION_1_0		MAKE_SD_VERSION(1, 0, 0)
@@ -113,8 +114,14 @@
 #define SD_HIGHSPEED_BUSY	0x00020000
 #define SD_HIGHSPEED_SUPPORTED	0x00020000
 
+#define MMC_HS_TIMING		0x00000100
+#define MMC_HS_DDR_52MHz_12V	0x8
+#define MMC_HS_DDR_52MHz_18_3V	0x4
+#define MMC_HS_52MHZ		0x2
+#define MMC_HS_26MHz		0x1
 #define OCR_BUSY		0x80000000
 #define OCR_HCS			0x40000000
+#define OCR_XPC			0x10000000
 #define OCR_VOLTAGE_MASK	0x007FFF80
 #define OCR_ACCESS_MODE		0x60000000
 
@@ -183,12 +190,22 @@
 #define EXT_CSD_PART_CONF		179	/* R/W */
 #define EXT_CSD_BUS_WIDTH		183	/* R/W */
 #define EXT_CSD_HS_TIMING		185	/* R/W */
+#define EXT_CSD_POWER_CLASS		187	/* R/W */
 #define EXT_CSD_REV			192	/* RO */
 #define EXT_CSD_CARD_TYPE		196	/* RO */
+#define EXT_CSD_PWR_CL_52_195		200	/* RO */
+#define EXT_CSD_PWR_CL_26_195		201	/* RO */
+#define EXT_CSD_PWR_CL_52_360		202	/* RO */
+#define EXT_CSD_PWR_CL_26_360		203	/* RO */
 #define EXT_CSD_SEC_CNT			212	/* RO, 4 bytes */
 #define EXT_CSD_HC_WP_GRP_SIZE		221	/* RO */
 #define EXT_CSD_HC_ERASE_GRP_SIZE	224	/* RO */
 #define EXT_CSD_BOOT_MULT		226	/* RO */
+#define EXT_CSD_PWR_CL_200_195		236	/* RO */
+#define EXT_CSD_PWR_CL_200_360		237	/* RO */
+#define EXT_CSD_PWR_CL_DDR_52_195	238	/* RO */
+#define EXT_CSD_PWR_CL_DDR_52_360	239	/* RO */
+#define EXT_CSD_GENERIC_CMD6_TIME	248	/* RO in 10ms increments */
 #define EXT_CSD_BKOPS_SUPPORT		502	/* RO */
 
 /*
@@ -203,6 +220,10 @@
 #define EXT_CSD_CARD_TYPE_52	(1 << 1)	/* Card can run at 52MHz */
 #define EXT_CSD_CARD_TYPE_DDR_1_8V	(1 << 2)
 #define EXT_CSD_CARD_TYPE_DDR_1_2V	(1 << 3)
+#define EXT_CSD_CARD_TYPE_HS200_1_8V	(1 << 4)	/* HS200 SDR, 1.8v */
+#define EXT_CSD_CARD_TYPE_HS200_1_2V	(1 << 5)	/* HS200 SDR, 1.2V */
+#define EXT_CSD_CARD_TYPE_HS400_1_8V	(1 << 6)	/* HS400 DDR, 1.8V */
+#define EXT_CSD_CARD_TYPE_HS400_1_2V	(1 << 7)	/* HS400 DDR, 1.2V */
 #define EXT_CSD_CARD_TYPE_DDR_52	(EXT_CSD_CARD_TYPE_DDR_1_8V \
 					| EXT_CSD_CARD_TYPE_DDR_1_2V)
 
@@ -608,6 +629,6 @@ int pci_mmc_init(const char *name, struct pci_device_id *mmc_supported);
  * @mmc:	MMC device
  * @return block device if found, else NULL
  */
-struct blk_desc *mmc_get_blk_desc(struct mmc *mmc);
+struct blk_desc *mmc_get_blk_desc(struct mmc *mmc, int devnum);
 
 #endif /* _MMC_H_ */

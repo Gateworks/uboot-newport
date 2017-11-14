@@ -13,6 +13,10 @@
 #include <dm/root.h>
 #include "mmc_private.h"
 
+#ifdef CONFIG_MMC_CAVIUM
+#include <asm/gpio.h>
+#include <asm/arch/cavium_mmc.h>
+#endif
 DECLARE_GLOBAL_DATA_PTR;
 
 #ifdef CONFIG_DM_MMC_OPS
@@ -83,12 +87,20 @@ int mmc_getcd(struct mmc *mmc)
 
 struct mmc *mmc_get_mmc_dev(struct udevice *dev)
 {
-	struct mmc_uclass_priv *upriv;
 
 	if (!device_active(dev))
 		return NULL;
+#ifdef CONFIG_MMC_CAVIUM
+	struct cavium_mmc_host *host = dev_get_priv(dev);
+	if (!host)
+		return NULL;
+	struct mmc *mmc = host->slots[host->cur_slotid].mmc;
+	return mmc;
+#else
+	struct mmc_uclass_priv *upriv;
 	upriv = dev_get_uclass_priv(dev);
 	return upriv->mmc;
+#endif
 }
 
 #ifdef CONFIG_BLK
@@ -108,6 +120,12 @@ struct mmc *find_mmc_device(int dev_num)
 
 	mmc_dev = dev_get_parent(dev);
 
+#ifdef CONFIG_MMC_CAVIUM
+	struct cavium_mmc_host *host = dev_get_priv(mmc_dev);
+	if (dev_num > CAVIUM_MAX_MMC_SLOT && !host)
+		return NULL;
+	host->cur_slotid = dev_num;
+#endif
 	struct mmc *mmc = mmc_get_mmc_dev(mmc_dev);
 
 	return mmc;
@@ -123,17 +141,20 @@ int mmc_get_next_devnum(void)
 	return blk_find_max_devnum(IF_TYPE_MMC);
 }
 
-struct blk_desc *mmc_get_blk_desc(struct mmc *mmc)
+struct blk_desc *mmc_get_blk_desc(struct mmc *mmc, int devnum)
 {
 	struct blk_desc *desc;
 	struct udevice *dev;
 
-	device_find_first_child(mmc->dev, &dev);
-	if (!dev)
-		return NULL;
+	for (device_find_first_child(mmc->dev, &dev);
+	     dev;
+	     device_find_next_child(&dev)) {
 	desc = dev_get_uclass_platdata(dev);
-
+		if (desc && desc->if_type == IF_TYPE_MMC &&
+		    desc->devnum == devnum)
 	return desc;
+	}
+	return NULL;
 }
 
 void mmc_do_preinit(void)
@@ -168,6 +189,30 @@ void print_mmc_devices(char separator)
 	for (uclass_first_device(UCLASS_MMC, &dev);
 	     dev;
 	     uclass_next_device(&dev), first = false) {
+#ifdef CONFIG_MMC_CAVIUM
+		struct cavium_mmc_host *host = dev_get_priv(dev);
+		struct mmc *m = NULL;
+		if (!host)
+			continue;
+		for (int devnum = 0; devnum < CAVIUM_MAX_MMC_SLOT;
+			devnum++, m=NULL) {
+			if (!first) {
+				printf("%c", separator);
+				if (separator != '\n')
+					puts(" ");
+			}
+			if (!(host->slots[devnum].mmc))
+				continue;
+			m = host->slots[devnum].mmc;
+			if (m->has_init)
+				mmc_type = IS_SD(m) ? "SD" : "eMMC";
+			else
+				mmc_type = NULL;
+			printf("%s: %d ", m->cfg->name, devnum);
+			if (mmc_type)
+				printf("(%s)  ", mmc_type);
+		}
+#else
 		struct mmc *m = mmc_get_mmc_dev(dev);
 
 		if (!first) {
@@ -183,6 +228,7 @@ void print_mmc_devices(char separator)
 		printf("%s: %d", m->cfg->name, mmc_get_blk_desc(m)->devnum);
 		if (mmc_type)
 			printf(" (%s)", mmc_type);
+#endif
 	}
 
 	printf("\n");
@@ -249,9 +295,16 @@ int mmc_unbind(struct udevice *dev)
 static int mmc_select_hwpart(struct udevice *bdev, int hwpart)
 {
 	struct udevice *mmc_dev = dev_get_parent(bdev);
-	struct mmc *mmc = mmc_get_mmc_dev(mmc_dev);
+#ifdef CONFIG_MMC_CAVIUM
+	struct cavium_mmc_host *host = dev_get_priv(mmc_dev);
 	struct blk_desc *desc = dev_get_uclass_platdata(bdev);
+	struct mmc *mmc = host->slots[desc->devnum].mmc;
 
+	if (host->cur_slotid != desc->devnum)
+		host->cur_slotid = desc->devnum;
+#else
+	struct mmc *mmc = mmc_get_mmc_dev(mmc_dev);
+#endif
 	if (desc->hwpart == hwpart)
 		return 0;
 
@@ -264,8 +317,14 @@ static int mmc_select_hwpart(struct udevice *bdev, int hwpart)
 static int mmc_blk_probe(struct udevice *dev)
 {
 	struct udevice *mmc_dev = dev_get_parent(dev);
+#ifdef CONFIG_MMC_CAVIUM
+	struct cavium_mmc_host *host = dev_get_priv(mmc_dev);
+	struct blk_desc *desc = dev_get_uclass_platdata(dev);
+	struct mmc *mmc = host->slots[desc->devnum].mmc;
+#else
 	struct mmc_uclass_priv *upriv = dev_get_uclass_priv(mmc_dev);
 	struct mmc *mmc = upriv->mmc;
+#endif
 	int ret;
 
 	ret = mmc_init(mmc);
