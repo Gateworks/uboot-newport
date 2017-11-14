@@ -192,10 +192,10 @@ int pci_hose_config_device(struct pci_controller *hose,
 			   unsigned long command)
 {
 	u32 bar_response;
-	unsigned int old_command;
+	u32 old_command;
 	pci_addr_t bar_value;
 	pci_size_t bar_size;
-	unsigned char pin;
+	u8 pin;
 	int bar, found_mem64;
 
 	debug("PCI Config: I/O=0x%lx, Memory=0x%llx, Command=0x%lx\n", io,
@@ -325,6 +325,24 @@ void pci_cfgfunc_do_nothing(struct pci_controller *hose,
  * to get the correct result when scanning bridges
  */
 extern int pciauto_config_device(struct pci_controller *hose, pci_dev_t dev);
+
+__weak int pci_config_fixed(struct pci_controller *hose, pci_dev_t dev)
+{
+	/*
+	 * Check if pci device has a fixed configuration
+	 */
+	return 0;
+}
+
+__weak int pci_prescan_config(struct pci_controller *hose, pci_dev_t dev)
+{
+	return 0;
+}
+
+__weak int pci_postscan_config(struct pci_controller *hose, pci_dev_t dev)
+{
+	return 0;
+}
 
 #ifdef CONFIG_PCI_SCAN_SHOW
 __weak int pci_print_dev(struct pci_controller *hose, pci_dev_t dev)

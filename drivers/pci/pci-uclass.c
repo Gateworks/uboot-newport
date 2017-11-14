@@ -522,12 +522,22 @@ int dm_pci_hose_probe_bus(struct udevice *bus)
 {
 	int sub_bus;
 	int ret;
+	int ea_pos;
+	u8 reg;
 
 	debug("%s\n", __func__);
 
-	sub_bus = pci_get_bus_max() + 1;
-	debug("%s: bus = %d/%s\n", __func__, sub_bus, bus->name);
-	dm_pciauto_prescan_setup_bridge(bus, sub_bus);
+	ea_pos = dm_pci_find_capability(bus, PCI_CAP_ID_EA);
+
+	if (ea_pos) {
+		dm_pci_read_config8(bus, ea_pos + sizeof(u32) + sizeof(u8), &reg);
+		sub_bus = reg;
+		debug("%s: bus = %d/%s\n", __func__, sub_bus, bus->name);
+	} else {
+		sub_bus = pci_get_bus_max() + 1;
+		debug("%s: bus = %d/%s\n", __func__, sub_bus, bus->name);
+		dm_pciauto_prescan_setup_bridge(bus, sub_bus);
+	}
 
 	ret = device_probe(bus);
 	if (ret) {
@@ -535,13 +545,16 @@ int dm_pci_hose_probe_bus(struct udevice *bus)
 		      ret);
 		return ret;
 	}
-	if (sub_bus != bus->seq) {
-		printf("%s: Internal error, bus '%s' got seq %d, expected %d\n",
-		       __func__, bus->name, bus->seq, sub_bus);
-		return -EPIPE;
+
+	if (!ea_pos) {
+		if (sub_bus != bus->seq) {
+			printf("%s: Internal error, bus '%s' got seq %d, expected %d\n",
+			       __func__, bus->name, bus->seq, sub_bus);
+			return -EPIPE;
+		}
+		sub_bus = pci_get_bus_max();
+		dm_pciauto_postscan_setup_bridge(bus, sub_bus);
 	}
-	sub_bus = pci_get_bus_max();
-	dm_pciauto_postscan_setup_bridge(bus, sub_bus);
 
 	return sub_bus;
 }
@@ -671,6 +684,119 @@ error:
 	return ret;
 }
 
+int pci_sriov_init(struct udevice *pdev, int vf_en)
+{
+	u16 vendor, device;
+	struct udevice *bus;
+	struct udevice *dev;
+	pci_dev_t bdf;
+	u16 ctrl;
+	u16 num_vfs;
+	u16 total_vf;
+	u16 vf_offset;
+	u16 vf_stride;
+	int vf, ret;
+	int pos;
+
+	pos = dm_pci_find_ext_capability(pdev, PCI_EXT_CAP_ID_SRIOV);
+	if (!pos) {
+		printf("Error: SRIOV capability not found\n");
+		return -ENODEV;
+	}
+
+	dm_pci_read_config16(pdev, pos + PCI_SRIOV_CTRL, &ctrl);
+
+	dm_pci_read_config16(pdev, pos + PCI_SRIOV_TOTAL_VF, &total_vf);
+
+	if (vf_en > total_vf)
+		vf_en = total_vf;
+
+	dm_pci_write_config16(pdev, pos + PCI_SRIOV_NUM_VF, vf_en);
+
+	ctrl |= PCI_SRIOV_CTRL_VFE | PCI_SRIOV_CTRL_MSE;
+	dm_pci_write_config16(pdev, pos + PCI_SRIOV_CTRL, ctrl);
+
+	dm_pci_read_config16(pdev, pos + PCI_SRIOV_NUM_VF, &num_vfs);
+
+	dm_pci_read_config16(pdev, pos + PCI_SRIOV_VF_OFFSET, &vf_offset);
+	dm_pci_read_config16(pdev, pos + PCI_SRIOV_VF_STRIDE, &vf_stride);
+
+	dm_pci_read_config16(pdev, PCI_VENDOR_ID, &vendor);
+	dm_pci_read_config16(pdev, pos + PCI_SRIOV_VF_DID, &device);
+
+	bdf = dm_pci_get_bdf(pdev);
+
+	pci_get_bus(PCI_BUS(bdf), &bus);
+
+	if (!bus)
+		return -ENODEV;
+
+	bdf += PCI_BDF(0, 0, vf_offset);
+
+	for (vf = 0; vf < num_vfs; vf++) {
+		struct pci_child_platdata *pplat;
+		ulong class;
+
+		pci_bus_read_config(bus, bdf, PCI_CLASS_REVISION,
+				    &class, PCI_SIZE_32);
+
+		class >>= 8;
+
+		debug("%s: bus %d/%s: found VF %x:%x\n", __func__,
+		      bus->seq, bus->name, PCI_DEV(bdf), PCI_FUNC(bdf));
+
+		/* Find this device in the device tree */
+		ret = pci_bus_find_devfn(bus, PCI_MASK_BUS(bdf), &dev);
+
+		if (ret == -ENODEV) {
+			struct pci_device_id find_id;
+
+			memset(&find_id, 0, sizeof(find_id));
+
+			find_id.vendor = vendor;
+			find_id.device = device;
+			find_id.class = class >> 8;
+
+			ret = pci_find_and_bind_driver(bus, &find_id,
+						       bdf, &dev);
+
+			if (ret)
+				return ret;
+		}
+
+		/* Update the platform data */
+		pplat = dev_get_parent_platdata(dev);
+		pplat->devfn = PCI_MASK_BUS(bdf);
+		pplat->vendor = vendor;
+		pplat->device = device;
+		pplat->class = class;
+		pplat->is_phys = false;
+		pplat->pdev = pdev;
+		pplat->vf_id = vf * vf_stride + vf_offset;
+
+		bdf += PCI_BDF(0, 0, vf_stride);
+	}
+
+	return 0;
+
+}
+
+int pci_sriov_get_totalvfs(struct udevice *pdev)
+{
+	u16 total_vf;
+	int pos;
+
+	pos = dm_pci_find_ext_capability(pdev, PCI_EXT_CAP_ID_SRIOV);
+	if (!pos) {
+		printf("Error: SRIOV capability not found\n");
+		return -ENODEV;
+	}
+
+	dm_pci_read_config16(pdev, pos + PCI_SRIOV_TOTAL_VF, &total_vf);
+
+	return total_vf;
+}
+
 int pci_bind_bus_devices(struct udevice *bus)
 {
 	ulong vendor, device;
@@ -744,6 +870,7 @@ int pci_bind_bus_devices(struct udevice *bus)
 		pplat->vendor = vendor;
 		pplat->device = device;
 		pplat->class = class;
+		pplat->is_phys = true;
 	}
 
 	return 0;
@@ -804,15 +931,15 @@ static int decode_regions(struct pci_controller *hose, ofnode parent_node,
 		} else {
 			continue;
 		}
-		pos = -1;
-		for (i = 0; i < hose->region_count; i++) {
-			if (hose->regions[i].flags == type)
-				pos = i;
-		}
-		if (pos == -1)
-			pos = hose->region_count++;
+
+		pos = hose->region_count++;
 		debug(" - type=%d, pos=%d\n", type, pos);
 		pci_set_region(hose->regions + pos, pci_addr, addr, size, type);
+	}
+
+	if(hose->region_count == MAX_PCI_REGIONS) {
+		printf("PCI region count reached limit, cannot add local memory region");
+		return 1;
 	}
 
 	/* Add a region for our local memory */
@@ -822,6 +949,7 @@ static int decode_regions(struct pci_controller *hose, ofnode parent_node,
 #endif
 	if (gd->pci_ram_top && gd->pci_ram_top < base + size)
 		size = gd->pci_ram_top - base;
+
 	pci_set_region(hose->regions + hose->region_count++, base, base,
 		       size, PCI_REGION_MEM | PCI_REGION_SYS_MEMORY);
 
@@ -1211,14 +1339,49 @@ pci_addr_t dm_pci_phys_to_bus(struct udevice *dev, phys_addr_t phys_addr,
 	return bus_addr;
 }
 
-void *dm_pci_map_bar(struct udevice *dev, int bar, int flags)
-{
-	pci_addr_t pci_bus_addr;
-	u32 bar_response;
+int dm_pci_ea_bar_read(struct udevice *dev, int bar,
+		       pci_addr_t *start, size_t *size);
 
-	/* read BAR address */
-	dm_pci_read_config32(dev, bar, &bar_response);
-	pci_bus_addr = (pci_addr_t)(bar_response & ~0xf);
+void *dm_pci_map_bar(struct udevice *dev, int bar, size_t *size, int flags)
+{
+	int pos;
+	pci_addr_t pci_bus_start;
+	u32 bar_response;
+	struct pci_child_platdata *pdata = dev_get_parent_platdata(dev);
+
+	if (!pdata->is_phys) {
+		if (bar < 9 || bar > 14)
+			return NULL;
+		dev = pdata->pdev;
+	}
+
+	pos = dm_pci_find_capability(dev, PCI_CAP_ID_EA);
+
+	if (pos) {
+		dm_pci_ea_bar_read(dev, bar, &pci_bus_start, size);
+	} else {
+		/* read BAR address */
+		if (bar >= 0 && bar <= 5) {
+			bar = PCI_BASE_ADDRESS_0 + bar * 4;
+		} else if (bar >= 9 && bar <= 14) {
+			pos = dm_pci_find_ext_capability(dev, PCI_EXT_CAP_ID_SRIOV);
+			bar = pos + PCI_SRIOV_BAR + bar * 4;
+			//TODO: Get BAR size
+		}
+		dm_pci_read_config32(dev, bar,
+				     &bar_response);
+		pci_bus_start = (pci_addr_t)(bar_response & ~0xf);
+
+		if ((bar_response & PCI_BASE_ADDRESS_MEM_TYPE_MASK) ==
+				PCI_BASE_ADDRESS_MEM_TYPE_64) {
+			dm_pci_read_config32(dev, bar + 4, &bar_response);
+		}
+		pci_bus_start |= (pci_addr_t)bar_response << 32;
+	}
+
+	if (!pdata->is_phys) {
+		pci_bus_start += (pdata->vf_id - 1) * (*size);
+	}
 
 	/*
 	 * Pass "0" as the length argument to pci_bus_to_virt.  The arg
@@ -1226,7 +1389,288 @@ void *dm_pci_map_bar(struct udevice *dev, int bar, int flags)
 	 * linear mapping.  In the future, this could read the BAR size
 	 * and pass that as the size if needed.
 	 */
-	return dm_pci_bus_to_virt(dev, pci_bus_addr, flags, 0, MAP_NOCACHE);
+	return dm_pci_bus_to_virt(dev, pci_bus_start, flags, 0, MAP_NOCACHE);
+}
+
+/* Find the header pointer to the Capabilities*/
+int dm_pci_find_cap_start(struct udevice *dev, u8 hdr_type)
+{
+	u16 status;
+
+	dm_pci_read_config16(dev, PCI_STATUS, &status);
+
+	if (!(status & PCI_STATUS_CAP_LIST))
+		return 0;
+
+	switch (hdr_type) {
+	case PCI_HEADER_TYPE_NORMAL:
+	case PCI_HEADER_TYPE_BRIDGE:
+		return PCI_CAPABILITY_LIST;
+	case PCI_HEADER_TYPE_CARDBUS:
+		return PCI_CB_CAPABILITY_LIST;
+	default:
+		return 0;
+	}
+}
+
+int dm_pci_find_cap(struct udevice *dev, int pos, int cap)
+{
+	int ttl = PCI_FIND_CAP_TTL;
+	u8 id;
+	u8 next_pos;
+
+	while (ttl--) {
+		dm_pci_read_config8(dev, pos, &next_pos);
+		if (next_pos < CAP_START_POS)
+			break;
+		next_pos &= ~3;
+		pos = (int) next_pos;
+		dm_pci_read_config8(dev, pos + PCI_CAP_LIST_ID, &id);
+		if (id == 0xff)
+			break;
+		if (id == cap)
+			return pos;
+		pos += PCI_CAP_LIST_NEXT;
+	}
+	return 0;
+}
+
+/* Returns the address of the requested capability structure within the
+ * device's PCI configuration space or 0 in case the device does not
+ * support it.
+ * */
+int dm_pci_find_capability(struct udevice *dev, int cap)
+{
+	int pos;
+	u8 hdr_type;
+
+	dm_pci_read_config8(dev, PCI_HEADER_TYPE, &hdr_type);
+
+	pos = dm_pci_find_cap_start(dev, hdr_type & 0x7F);
+
+	if (pos)
+		pos = dm_pci_find_cap(dev, pos, cap);
+
+	return pos;
+}
+
+/* Read an Enhanced Allocation (EA) entry */
+static int dm_pci_ea_entry_read(struct udevice *dev, int offset, int *bei, pci_addr_t *start, size_t *size)
+{
+	u32 base;
+	u32 max_offset;
+	u8  prop;
+	int ent_offset = offset;
+	int ent_size;
+	u32 dw0;
+
+	dm_pci_read_config32(dev, ent_offset, &dw0);
+
+	debug("%s: %d: dw0: %lx\n", __FUNCTION__, __LINE__, (unsigned long)dw0);
+
+	ent_offset += sizeof(u32);
+
+	/* Entry size field indicates DWORDs after 1st */
+	ent_size = ((dw0 & PCI_EA_ES) + 1) * sizeof(u32);
+
+	if (!(dw0 & PCI_EA_ENABLE))
+		goto out;
+	*bei = PCI_EA_BEI(dw0);
+
+	prop = PCI_EA_PP(dw0);
+
+	debug("EA property: %x\n", prop);
+
+	/*
+	* If the Property is in the reserved range, try the Secondary
+	* Property instead.
+	*/
+	if (prop > PCI_EA_P_BRIDGE_IO && prop < PCI_EA_P_MEM_RESERVED)
+		prop = PCI_EA_SP(dw0);
+	if (prop > PCI_EA_P_BRIDGE_IO)
+		goto out;
+
+	debug("EA property: %x\n", prop);
+
+	/* Read Base */
+	dm_pci_read_config32(dev, ent_offset, &base);
+	ent_offset += sizeof(u32);
+	*start = (pci_addr_t)base & PCI_EA_FIELD_MASK;
+
+	/* Read MaxOffset */
+	dm_pci_read_config32(dev, ent_offset, &max_offset);
+	ent_offset += sizeof(u32);
+
+	/* Read Base MSBs (if 64-bit entry) */
+	if (base & PCI_EA_IS_64) {
+		dm_pci_read_config32(dev, ent_offset, &base);
+		ent_offset += sizeof(u32);
+
+		*start |= (pci_addr_t)base << 32;
+	}
+
+	debug("EA (%u,%u) start = %lx\n", PCI_EA_BEI(dw0), prop, (unsigned long)*start);
+
+	*size = ((size_t)max_offset | 0x03) + 1;
+
+	/* Read MaxOffset MSBs (if 64-bit entry) */
+	if (max_offset & PCI_EA_IS_64) {
+		dm_pci_read_config32(dev, ent_offset, &max_offset);
+		ent_offset += sizeof(u32);
+
+		*size |= (size_t)max_offset << 32;
+	}
+
+	debug("EA (%u,%u) size = %lx\n", PCI_EA_BEI(dw0), prop, (unsigned long)*size);
+
+	if (*start + *size < *start) {
+		*size = 0;
+		*start = 0;
+		printf("EA Entry crosses address boundary\n");
+		goto out;
+	}
+
+	if (ent_size != ent_offset - offset) {
+		printf("EA Entry Size (%d) does not match length read (%d)\n",
+			ent_size, ent_offset - offset);
+		goto out;
+	}
+
+out:
+	return offset + ent_size;
+}
+
+/* Read an Enhanced Allocation (EA) BAR */
+int dm_pci_ea_bar_read(struct udevice *dev, int bar, pci_addr_t *start, size_t *size)
+{
+	int ea;
+	int offset;
+	u8  num_ent;
+	u8  hdr_type;
+	int i, bei = -1;
+
+	ea = dm_pci_find_capability(dev, PCI_CAP_ID_EA);
+
+	dm_pci_read_config8(dev, ea + PCI_EA_NUM_ENT, &num_ent);
+	num_ent &= PCI_EA_NUM_ENT_MASK;
+
+	offset = ea + PCI_EA_FIRST_ENT;
+
+	dm_pci_read_config8(dev, PCI_HEADER_TYPE, &hdr_type);
+
+	/* Skip DWORD 2 for type 1 functions */
+	if (hdr_type == PCI_HEADER_TYPE_BRIDGE)
+		offset += sizeof(u32);
+
+	for (i = 0; (i < num_ent) && (bar != bei); i++) {
+		offset = dm_pci_ea_entry_read(dev, offset, &bei, start, size);
+	}
+
+	return (bar == bei);
+}
+
+/**
+ * dm_pci_find_next_ext_capability - Find an extended capability
+ *
+ * Returns the address of the next matching extended capability structure
+ * within the device's PCI configuration space or 0 if the device does
+ * not support it.  Some capabilities can occur several times, e.g., the
+ * vendor-specific capability, and this provides a way to find them all.
+ */
+int dm_pci_find_next_ext_capability(struct udevice *dev,
+				    int start, int cap)
+{
+	u32 header;
+	int ttl, pos = PCI_CFG_SPACE_SIZE;
+
+	/* minimum 8 bytes per capability */
+	ttl = (PCI_CFG_SPACE_EXP_SIZE - PCI_CFG_SPACE_SIZE) / 8;
+
+	if (start)
+		pos = start;
+
+	dm_pci_read_config32(dev, pos, &header);
+	if (header == 0xffffffff || header == 0)
+		return 0;
+
+	while (ttl-- > 0) {
+		if (PCI_EXT_CAP_ID(header) == cap && pos != start)
+			return pos;
+
+		pos = PCI_EXT_CAP_NEXT(header);
+		if (pos < PCI_CFG_SPACE_SIZE)
+			break;
+
+		dm_pci_read_config32(dev, pos, &header);
+		if (header == 0xffffffff || header == 0)
+			break;
+	}
+
+	return 0;
+}
+
+/**
+ * dm_pci_find_ext_capability - Find an extended capability
+ *
+ * Returns the address of the requested extended capability structure
+ * within the device's PCI configuration space or 0 if the device does
+ * not support it.
+ */
+int dm_pci_find_ext_capability(struct udevice *dev, int cap)
+{
+	return dm_pci_find_next_ext_capability(dev, 0, cap);
+}
+
+/**
+ * pci_bus_find_next_ext_capability - Find an extended capability
+ *
+ * Returns the address of the next matching extended capability structure
+ * within the device's PCI configuration space or 0 if the device does
+ * not support it.  Some capabilities can occur several times, e.g., the
+ * vendor-specific capability, and this provides a way to find them all.
+ */
+static int pci_bus_find_next_ext_capability(struct udevice *bus,
+					    pci_dev_t bdf, int start, int cap)
+{
+	ulong header;
+	int ttl, pos = PCI_CFG_SPACE_SIZE;
+
+	/* minimum 8 bytes per capability */
+	ttl = (PCI_CFG_SPACE_EXP_SIZE - PCI_CFG_SPACE_SIZE) / 8;
+
+	if (start)
+		pos = start;
+
+	pci_bus_read_config(bus, bdf, pos, &header, PCI_SIZE_32);
+	if (header == 0xffffffff || header == 0)
+		return 0;
+
+	while (ttl-- > 0) {
+		if (PCI_EXT_CAP_ID(header) == cap && pos != start)
+			return pos;
+
+		pos = PCI_EXT_CAP_NEXT(header);
+		if (pos < PCI_CFG_SPACE_SIZE)
+			break;
+
+		pci_bus_read_config(bus, bdf, pos, &header, PCI_SIZE_32);
+		if (header == 0xffffffff || header == 0)
+			break;
+	}
+
+	return 0;
+}
+
+/**
+ * pci_find_ext_capability - Find an extended capability
+ *
+ * Returns the address of the requested extended capability structure
+ * within the device's PCI configuration space or 0 if the device does
+ * not support it.
+ */
+int pci_bus_find_ext_capability(struct udevice *bus, pci_dev_t bdf, int cap)
+{
+	return pci_bus_find_next_ext_capability(bus, bdf, 0, cap);
 }
 
 UCLASS_DRIVER(pci) = {
