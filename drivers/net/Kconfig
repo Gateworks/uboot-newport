@@ -200,6 +200,14 @@ config SUN8I_EMAC
 	  It can be found in H3/A64/A83T based SoCs and compatible with both
 	  External and Internal PHYs.
 
+config THUNDERX_VNIC
+        bool "Cavium ThunderX VNIC support"
+        depends on ARCH_THUNDERX
+        select PHYLIB
+        help
+          This driver supports the Cavium ThunderX VNIC ethernet MAC/PHY/MDIO.
+	  It can be found in CN80XX/CN81XX/CN88XX/CN93XX based SoCs.
+
 config XILINX_AXIEMAC
 	depends on DM_ETH && (MICROBLAZE || ARCH_ZYNQ || ARCH_ZYNQMP)
 	select PHYLIB
