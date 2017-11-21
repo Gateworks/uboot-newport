@@ -9,6 +9,7 @@
 #include <common.h>
 
 #include <command.h>
+#include <dm/uclass.h>
 #include <environment.h>
 #include <fdtdec.h>
 #include <linux/stddef.h>
@@ -105,7 +106,7 @@ static int mmc_set_env_part(struct mmc *mmc)
 	int dev = mmc_get_env_dev();
 	int ret = 0;
 
-	env_mmc_orig_hwpart = mmc_get_blk_desc(mmc)->hwpart;
+	env_mmc_orig_hwpart = mmc_get_blk_desc(mmc, dev)->hwpart;
 	ret = blk_select_hwpart_devnum(IF_TYPE_MMC, dev, part);
 	if (ret)
 		puts("MMC partition switch failed\n");
@@ -150,7 +151,8 @@ static inline int write_env(struct mmc *mmc, unsigned long size,
 			    unsigned long offset, const void *buffer)
 {
 	uint blk_start, blk_cnt, n;
-	struct blk_desc *desc = mmc_get_blk_desc(mmc);
+	int dev = mmc_get_env_dev();
+	struct blk_desc *desc = mmc_get_blk_desc(mmc, dev);
 
 	blk_start	= ALIGN(offset, mmc->write_bl_len) / mmc->write_bl_len;
 	blk_cnt		= ALIGN(size, mmc->write_bl_len) / mmc->write_bl_len;
@@ -213,7 +215,8 @@ static inline int read_env(struct mmc *mmc, unsigned long size,
 			   unsigned long offset, const void *buffer)
 {
 	uint blk_start, blk_cnt, n;
-	struct blk_desc *desc = mmc_get_blk_desc(mmc);
+	int dev = mmc_get_env_dev();
+	struct blk_desc *desc = mmc_get_blk_desc(mmc, dev);
 
 	blk_start	= ALIGN(offset, mmc->read_bl_len) / mmc->read_bl_len;
 	blk_cnt		= ALIGN(size, mmc->read_bl_len) / mmc->read_bl_len;
@@ -293,6 +296,10 @@ void env_relocate_spec(void)
 	int ret;
 	int dev = mmc_get_env_dev();
 	const char *errmsg;
+#ifdef CONFIG_DM_MMC
+	struct udevice *udev;
+	uclass_get_device(UCLASS_MMC, dev, &udev);
+#endif
 
 	mmc = find_mmc_device(dev);
 
