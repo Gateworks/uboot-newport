@@ -27,9 +27,9 @@ static void ehci_pci_init(struct udevice *dev, struct ehci_hccr **ret_hccr,
 	struct ehci_hccr *hccr;
 	struct ehci_hcor *hcor;
 	u32 cmd;
+	size_t size;
 
-	hccr = (struct ehci_hccr *)dm_pci_map_bar(dev,
-			PCI_BASE_ADDRESS_0, PCI_REGION_MEM);
+	hccr = (struct ehci_hccr *)dm_pci_map_bar(dev, 0, &size, PCI_REGION_MEM);
 	hcor = (struct ehci_hcor *)((uintptr_t) hccr +
 			HC_LENGTH(ehci_readl(&hccr->cr_capbase)));
 

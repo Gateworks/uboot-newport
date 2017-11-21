@@ -26,7 +26,7 @@
 #define MAX_EP_CTX_NUM		31
 #define XHCI_ALIGNMENT		64
 /* Generic timeout for XHCI events */
-#define XHCI_TIMEOUT		5000
+#define XHCI_TIMEOUT		200000
 /* Max number of USB devices for any host controller - limit in section 6.1 */
 #define MAX_HC_SLOTS            256
 /* Section 5.3.3 - MaxPorts */
@@ -1093,12 +1093,14 @@ struct xhci_virt_device {
 /* xHCI spec says all registers are little endian */
 static inline unsigned int xhci_readl(uint32_t volatile *regs)
 {
+	mb();
 	return readl(regs);
 }
 
 static inline void xhci_writel(uint32_t volatile *regs, const unsigned int val)
 {
 	writel(val, regs);
+	mb();
 }
 
 /*
@@ -1111,6 +1113,7 @@ static inline void xhci_writel(uint32_t volatile *regs, const unsigned int val)
  */
 static inline u64 xhci_readq(__le64 volatile *regs)
 {
+	mb();
 #if BITS_PER_LONG == 64
 	return readq(regs);
 #else
@@ -1133,6 +1136,7 @@ static inline void xhci_writeq(__le64 volatile *regs, const u64 val)
 	writel(val_lo, ptr);
 	writel(val_hi, ptr + 1);
 #endif
+	mb();
 }
 
 int xhci_hcd_init(int index, struct xhci_hccr **ret_hccr,
