@@ -6,3 +6,5 @@
 #
 
 obj-y	:= thunderx.o atf.o
+obj-$(CONFIG_OF_LIBFDT) += fdt.o
+
