@@ -27,13 +27,16 @@
 #include <dm/device-internal.h>
 #include <dm/lists.h>
 
+#define LOWER32(val)	(u32)((u64)(val) & 0xffffffff)
+#define UPPER32(val)	(u32)(((u64)(val) & 0xffffffff00000000) >> 32)
+
 static int ata_io_flush(struct ahci_uc_priv *uc_priv, u8 port);
 
 #ifndef CONFIG_DM_SCSI
 struct ahci_uc_priv *probe_ent = NULL;
 #endif
 
-#define writel_with_flush(a,b)	do { writel(a,b); readl(b); } while (0)
+#define writel_with_flush(a,b)	do { writel(a,b); mb(); readl(b); } while (0)
 
 /*
  * Some controllers limit number of blocks they can read/write at once.
@@ -270,7 +273,7 @@ static int ahci_host_init(struct ahci_uc_priv *uc_priv)
 		/* Bring up SATA link. */
 		ret = ahci_link_up(uc_priv, i);
 		if (ret) {
-			printf("SATA link %d timeout.\n", i);
+			debug("SATA link %d timeout.\n", i);
 			continue;
 		} else {
 			debug("SATA link ok.\n");
@@ -303,7 +306,7 @@ static int ahci_host_init(struct ahci_uc_priv *uc_priv)
 			continue;
 		}
 
-		printf("Target spinup took %d ms.\n", j);
+		debug("Target spinup took %d ms.\n", j);
 		if (j == WAIT_MS_SPINUP)
 			debug("timeout.\n");
 		else
@@ -397,7 +400,7 @@ static void ahci_print_info(struct ahci_uc_priv *uc_priv)
 	else
 		scc_s = "unknown";
 #endif
-	printf("AHCI %02x%02x.%02x%02x "
+	debug("AHCI %02x%02x.%02x%02x "
 	       "%u slots %u ports %s Gbps 0x%x impl %s mode\n",
 	       (vers >> 24) & 0xff,
 	       (vers >> 16) & 0xff,
@@ -405,7 +408,7 @@ static void ahci_print_info(struct ahci_uc_priv *uc_priv)
 	       vers & 0xff,
 	       ((cap >> 8) & 0x1f) + 1, (cap & 0x1f) + 1, speed_s, impl, scc_s);
 
-	printf("flags: "
+	debug("flags: "
 	       "%s%s%s%s%s%s%s"
 	       "%s%s%s%s%s%s%s"
 	       "%s%s%s%s%s%s\n",
@@ -455,8 +458,12 @@ static int ahci_init_one(struct ahci_uc_priv *uc_priv, pci_dev_t dev)
 
 #if !defined(CONFIG_DM_SCSI)
 #ifdef CONFIG_DM_PCI
-	uc_priv->mmio_base = dm_pci_map_bar(dev, PCI_BASE_ADDRESS_5,
-					      PCI_REGION_MEM);
+	size_t size;
+	int bar = 5;
+	dm_pci_read_config16(dev, PCI_VENDOR_ID, &vendor);
+	if (vendor == 0x177d)
+		bar = 0;
+	uc_priv->mmio_base = dm_pci_map_bar(dev, bar, &size, PCI_REGION_MEM);
 
 	/* Take from kernel:
 	 * JMicron-specific fixup:
@@ -515,8 +522,9 @@ static int ahci_fill_sg(struct ahci_uc_priv *uc_priv, u8 port,
 
 	for (i = 0; i < sg_count; i++) {
 		ahci_sg->addr =
-		    cpu_to_le32((unsigned long) buf + i * MAX_DATA_BYTE_COUNT);
-		ahci_sg->addr_hi = 0;
+			cpu_to_le32(LOWER32(buf + i * MAX_DATA_BYTE_COUNT));
+		ahci_sg->addr_hi =
+			cpu_to_le32(UPPER32(buf + i * MAX_DATA_BYTE_COUNT));
 		ahci_sg->flags_size = cpu_to_le32(0x3fffff &
 					  (buf_len < MAX_DATA_BYTE_COUNT
 					   ? (buf_len - 1)
@@ -533,11 +541,8 @@ static void ahci_fill_cmd_slot(struct ahci_ioports *pp, u32 opts)
 {
 	pp->cmd_slot->opts = cpu_to_le32(opts);
 	pp->cmd_slot->status = 0;
-	pp->cmd_slot->tbl_addr = cpu_to_le32((u32)pp->cmd_tbl & 0xffffffff);
-#ifdef CONFIG_PHYS_64BIT
-	pp->cmd_slot->tbl_addr_hi =
-	    cpu_to_le32((u32)(((pp->cmd_tbl) >> 16) >> 16));
-#endif
+	pp->cmd_slot->tbl_addr = cpu_to_le32(LOWER32(pp->cmd_tbl));
+	pp->cmd_slot->tbl_addr_hi = cpu_to_le32(UPPER32(pp->cmd_tbl));
 }
 
 static int wait_spinup(void __iomem *port_mmio)
@@ -607,10 +612,17 @@ static int ahci_port_start(struct ahci_uc_priv *uc_priv, u8 port)
 	pp->cmd_tbl_sg =
 			(struct ahci_sg *)(uintptr_t)virt_to_phys((void *)mem);
 
-	writel_with_flush((unsigned long)pp->cmd_slot,
+	if (uc_priv->cap & HOST_CAP_64)
+		writel_with_flush(cpu_to_le32(UPPER32(pp->cmd_slot)),
+				  port_mmio + PORT_LST_ADDR_HI);
+	writel_with_flush(cpu_to_le32(LOWER32(pp->cmd_slot)),
 			  port_mmio + PORT_LST_ADDR);
 
-	writel_with_flush(pp->rx_fis, port_mmio + PORT_FIS_ADDR);
+	if (uc_priv->cap & HOST_CAP_64)
+		writel_with_flush(cpu_to_le32(UPPER32(pp->rx_fis)),
+				  port_mmio + PORT_FIS_ADDR_HI);
+	writel_with_flush(cpu_to_le32(LOWER32(pp->rx_fis)),
+			  port_mmio + PORT_FIS_ADDR);
 
 #ifdef CONFIG_SUNXI_AHCI
 	sunxi_dma_init(port_mmio);
@@ -662,13 +674,16 @@ static int ahci_device_data_io(struct ahci_uc_priv *uc_priv, u8 port, u8 *fis,
 	ahci_dcache_flush_sata_cmd(pp);
 	ahci_dcache_flush_range((unsigned long)buf, (unsigned long)buf_len);
 
+	mb();
 	writel_with_flush(1, port_mmio + PORT_CMD_ISSUE);
 
+	mb();
 	if (waiting_for_cmd_completed(port_mmio + PORT_CMD_ISSUE,
 				WAIT_MS_DATAIO, 0x1)) {
 		printf("timeout exit!\n");
 		return -1;
 	}
+	mb();
 
 	ahci_dcache_invalidate_range((unsigned long)buf,
 				     (unsigned long)buf_len);
@@ -941,6 +956,7 @@ static int ahci_scsi_exec(struct udevice *dev, struct scsi_cmd *pccb)
 #endif
 	int ret;
 
+	debug("ahci_scsi_exec: CMD %d\n", pccb->cmd[0]);
 	switch (pccb->cmd[0]) {
 	case SCSI_READ16:
 	case SCSI_READ10:
@@ -984,7 +1000,7 @@ static int ahci_start_ports(struct ahci_uc_priv *uc_priv)
 	for (i = 0; i < CONFIG_SYS_SCSI_MAX_SCSI_ID; i++) {
 		if (((linkmap >> i) & 0x01)) {
 			if (ahci_port_start(uc_priv, (u8) i)) {
-				printf("Can not start port %d\n", i);
+				debug("AHCI Can not start port %d\n", i);
 				continue;
 			}
 		}
@@ -1167,19 +1183,31 @@ int ahci_probe_scsi(struct udevice *ahci_dev)
 	struct scsi_platdata *uc_plat;
 	struct udevice *dev;
 	int ret;
+	int bar = 5;
+	size_t size;
+	u16 vendor, device;
 
 	device_find_first_child(ahci_dev, &dev);
 	if (!dev)
 		return -ENODEV;
+
 	uc_plat = dev_get_uclass_platdata(dev);
-	uc_plat->base = (ulong)dm_pci_map_bar(ahci_dev, PCI_BASE_ADDRESS_5,
-					      PCI_REGION_MEM);
-	uc_plat->max_lun = 1;
-	uc_plat->max_id = 2;
+	dm_pci_read_config16(ahci_dev, PCI_VENDOR_ID, &vendor);
+	dm_pci_read_config16(ahci_dev, PCI_DEVICE_ID, &device);
+
+	debug("AHCI device %04x:%04x\n", vendor, device);
+	if ((vendor == 0x177d) && (device == 0xa01c))
+		bar = 0;
+	uc_plat->base = (uintptr_t)dm_pci_map_bar(ahci_dev, bar, &size, PCI_REGION_MEM);
+
 	uc_priv = dev_get_uclass_priv(dev);
 	ret = ahci_init_one(uc_priv, dev);
 	if (ret)
 		return ret;
+
+	uc_plat->max_lun = 1;
+	uc_plat->max_id = uc_priv->n_ports;
+
 	ret = ahci_start_ports(uc_priv);
 	if (ret)
 		return ret;

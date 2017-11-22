@@ -12,11 +12,22 @@
 static int ahci_pci_bind(struct udevice *dev)
 {
 	struct udevice *scsi_dev;
+	int ret;
 
-	return ahci_bind_scsi(dev, &scsi_dev);
+	ret = ahci_bind_scsi(dev, &scsi_dev);
+
+	if (ret)
+		goto out;
+
+	scsi_dev->uclass_priv = calloc(1, sizeof(struct ahci_uc_priv));
+	if (!scsi_dev->uclass_priv)
+		ret = -ENOMEM;
+
+out:
+	return ret;
 }
 
-static int ahci_pci_probe(struct udevice *dev)
+static int ahci_pci_probe(struct udevice *dev, ulong base)
 {
 	return ahci_probe_scsi(dev);
 }

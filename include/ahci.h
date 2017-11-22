@@ -40,6 +40,7 @@
 #define HOST_RESET		(1 << 0)  /* reset controller; self-clear */
 #define HOST_IRQ_EN		(1 << 1)  /* global IRQ enable */
 #define HOST_AHCI_EN		(1 << 31) /* AHCI enabled */
+#define HOST_CAP_64		(1 << 31) /* 64-bit addressing supported */
 
 /* Registers for each SATA port */
 #define PORT_LST_ADDR		0x00 /* command list DMA addr */
