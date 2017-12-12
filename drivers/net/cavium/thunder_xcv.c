@@ -35,7 +35,7 @@ struct lxcv {
 struct lxcv *xcv;
 
 /* Initialize XCV block */
-void xcv_init_hw(void)
+void xcv_init_hw(int phy_mode)
 {
 	//union cavm_xcvx_ctl xcv_ctl;
 	union cavm_xcvx_reset reset;
@@ -56,11 +56,34 @@ void xcv_init_hw(void)
  */
 	udelay(10);
 
-	/* Optionally, bypass the DLL setting */
+	/* enable/bypass DLL providing MAC based internal TX/RX delays */
 	xcv_dll_ctl.u = readq(CSR_PA(0, CAVM_XCVX_DLL_CTL(0)));
+	xcv_dll_ctl.s.clkrx_byp = 0;
 	xcv_dll_ctl.s.clkrx_set = 0;
-	xcv_dll_ctl.s.clkrx_byp = 1;
 	xcv_dll_ctl.s.clktx_byp = 0;
+	xcv_dll_ctl.s.clktx_set = 0;
+	switch(phy_mode) {
+	/* RX and TX delays are added by the MAC */
+	case PHY_INTERFACE_MODE_RGMII:
+		break;
+	/* internal RX and TX delays provided by the PHY */
+	case PHY_INTERFACE_MODE_RGMII_ID:
+		xcv_dll_ctl.s.clkrx_byp = 1;
+		xcv_dll_ctl.s.clktx_byp = 1;
+		break;
+	/* internal RX delay provided by the PHY, the MAC
+	 * should not add an RX delay in this case
+	 */
+	case PHY_INTERFACE_MODE_RGMII_RXID:
+		xcv_dll_ctl.s.clkrx_byp = 1;
+		break;
+	/* internal TX delay provided by the PHY, the MAC
+	 * should not add an TX delay in this case
+	 */
+	case PHY_INTERFACE_MODE_RGMII_TXID:
+		xcv_dll_ctl.s.clktx_byp = 1;
+		break;
+	}
 	writeq(xcv_dll_ctl.u, CSR_PA(0, CAVM_XCVX_DLL_CTL(0)));
 
 	/* Enable the compensation controller */
