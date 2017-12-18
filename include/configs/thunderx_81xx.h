@@ -269,33 +269,42 @@
 
 /** Extra environment settings */
 #define NEWPORT_ENV_SETTINGS \
-	"kernel=Image-4.12\0" \
+	"kernel=Image\0" \
 	"prefix=newport\0" \
 	"console=ttyAMA0,115200n8 earlycon=pl011,0x87e028000000\0" \
-	"root=/dev/mmcblk0p2 rw rootwait\0" \
+	"root=/dev/mmcblk${dev}p${part} rw rootwait\0" \
 	"cma=64M\0" \
-	"extra=net.ifnames=0 debug\0" \
-	"bootcmd=run bootmmc\0" \
+	"bootcmd=run boot_mmc\0" \
+	"dev=0\0" \
+	"part=2\0" \
 	\
 	"setargs=setenv bootargs \"console=${console} root=${root} " \
 		"coherent_pool=${cma} ${extra}\0" \
 	\
-	"bootmmc=ext2load mmc 0:2 ${kernel_addr} boot/${kernel} && " \
-		"setenv root '/dev/mmcblk0p2 rw rootwait' && " \
+	"boot_mmc=ext4load mmc ${dev}:${part} ${kernel_addr} boot/${kernel} && " \
+		"setenv root \"/dev/mmcblk${dev}p${part} rw rootwait\" && " \
 		"run setargs && booti ${kernel_addr} - ${fdtcontroladdr}\0" \
 	\
-	"bootsata=sata init; " \
-		"ext2load sata 0:1 ${kernel_addr} boot/${kernel} && " \
-		"setenv root '/dev/sda1 rw rootwait' && " \
+	"boot_sata=sata init; " \
+		"ext4load sata ${dev}:1 ${kernel_addr} boot/${kernel} && " \
+		"setenv root \"/dev/sda1 rw rootwait\" && " \
 		"run setargs && booti ${kernel_addr} - ${fdtcontroladdr}\0" \
 	\
-	"bootnet=tftpboot ${kernel_addr} ${prefix}/${kernel} && " \
+	"boot_net=tftpboot ${kernel_addr} ${prefix}/${kernel} && " \
 		"run setargs && booti ${kernel_addr} - ${fdtcontroladdr}\0" \
 	\
-	"update_all=tftpboot ${loadaddr} newport/gw63xx.img && " \
-		"mmc dev 0 && mmc write ${loadaddr} 0x0 0x4000\0" \
-	"update_bdk=tftpboot ${loadaddr} newport/boot.bin && " \
-		"mmc dev 0 && mmc write ${loadaddr} 0x100 0x180\0"
+	"boot_buildroot=tftpboot ${kernel_addr} ${prefix}/buildroot/${kernel} && " \
+		"run setargs && booti ${kernel_addr} - ${fdtcontroladdr}\0" \
+	\
+	"update_firmware=tftpboot ${loadaddr} ${prefix}/${image} && " \
+		"mmc write ${loadaddr} 0 8000\0" \
+	\
+	"update_all=tftpboot ${loadaddr} ${prefix}/${image} && " \
+		"gzwrite mmc ${dev} ${loadaddr} ${filesize}\0" \
+	\
+	"update_rootfs=tftpboot ${loadaddr} ${prefix}/${image} && " \
+		"gzwrite mmc ${dev} ${loadaddr} ${filesize} 100000 1000000\0"
+
 #define CONFIG_EXTRA_ENV_SETTINGS	\
 					NEWPORT_ENV_SETTINGS \
 					"loadaddr=020000000\0"		\
@@ -305,13 +314,6 @@
 					"smi0mode=0.0.0\0"		\
 					"smi1mode=0.0.0\0"		\
 					"autoload=0\0"
-
-#define CONFIG_BOOTARGS			\
-					"console=ttyAMA0,115200n8 " \
-					"earlycon=pl011,0x87e028000000 " \
-					"net.ifnames=0 " \
-					"debug maxcpus=4 rootwait rw "\
-					"root=/dev/sda2 coherent_pool=64M"
 
 /** Store U-Boot version in "ver" environment variable */
 #define CONFIG_VERSION_VARIABLE
