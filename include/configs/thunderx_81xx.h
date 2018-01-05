@@ -272,7 +272,7 @@
 	"kernel=Image\0" \
 	"prefix=newport\0" \
 	"console=ttyAMA0,115200n8 earlycon=pl011,0x87e028000000\0" \
-	"root=/dev/mmcblk${dev}p${part} rw rootwait\0" \
+	"root=/dev/mmcblk0p1 rw rootwait\0" \
 	"cma=64M\0" \
 	"bootcmd=run boot_mmc\0" \
 	"dev=0\0" \
