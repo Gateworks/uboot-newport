@@ -5832,6 +5832,10 @@ static int cavium_mmc_get_config(struct udevice *dev)
 		slot->cfg.f_max = fdtdec_get_uint(blob, slot_node,
 						  "max-frequency",
 						  26000000);
+		if ((slot->cfg.f_max > 50000000) ||
+		    ((host->sclock / slot->cfg.f_max) < 10) )
+			slot->cfg.f_max = host->sclock / 10;
+
 		/* Set min frequency */
 		slot->cfg.f_min = 400000;
 		/* Set maximum number of blocks that can be transferred
