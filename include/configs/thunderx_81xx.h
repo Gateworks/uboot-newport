@@ -346,7 +346,9 @@
 /** Size of environment in bytes */
 #define CONFIG_ENV_SIZE			0x8000
 /** Starting offset of the environment */
-#define CONFIG_ENV_OFFSET		0xf00000
+#define CONFIG_ENV_OFFSET		0xff0000
+/** Redundancy */
+#define CONFIG_ENV_OFFSET_REDUND	(CONFIG_ENV_OFFSET + 0x8000)
 
 /** Maximum size of the BDK flat device-tree */
 #define CONFIG_BDK_FDT_SIZE		0x20000
