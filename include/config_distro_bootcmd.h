@@ -94,6 +94,26 @@
 #endif
 #endif
 
+#ifdef CONFIG_CMD_EXTLINUX
+#define BOOTENV_SHARED_EXTLINUX                                           \
+	"boot_extlinux="                                                  \
+		"sysboot ${devtype} ${devnum}:${distro_bootpart} any "    \
+			"${scriptaddr} ${prefix}extlinux/extlinux.conf\0" \
+	\
+	"scan_dev_for_extlinux="                                          \
+		"if test -e ${devtype} "                                  \
+				"${devnum}:${distro_bootpart} "           \
+				"${prefix}extlinux/extlinux.conf; then "  \
+			"echo Found ${prefix}extlinux/extlinux.conf; "    \
+			"run boot_extlinux; "                             \
+			"echo SCRIPT FAILED: continuing...; "             \
+		"fi\0"
+#define SCAN_DEV_FOR_EXTLINUX "run scan_dev_for_extlinux;"
+#else
+#define BOOTENV_SHARED_EXTLINUX
+#define SCAN_DEV_FOR_EXTLINUX
+#endif
+
 #ifdef BOOTEFI_NAME
 #if defined(CONFIG_ARM) && !defined(CONFIG_ARM64)
 /*
@@ -108,7 +128,6 @@
 #else
 #define BOOTENV_EFI_SET_FDTFILE_FALLBACK
 #endif
-
 
 #define BOOTENV_SHARED_EFI                                                \
 	"boot_efi_binary="                                                \
@@ -322,23 +341,11 @@
 	BOOTENV_SHARED_IDE \
 	BOOTENV_SHARED_UBIFS \
 	BOOTENV_SHARED_EFI \
+	BOOTENV_SHARED_EXTLINUX \
 	"boot_prefixes=/ /boot/\0" \
 	"boot_scripts=boot.scr.uimg boot.scr\0" \
 	"boot_script_dhcp=boot.scr.uimg\0" \
 	BOOTENV_BOOT_TARGETS \
-	\
-	"boot_extlinux="                                                  \
-		"sysboot ${devtype} ${devnum}:${distro_bootpart} any "    \
-			"${scriptaddr} ${prefix}extlinux/extlinux.conf\0" \
-	\
-	"scan_dev_for_extlinux="                                          \
-		"if test -e ${devtype} "                                  \
-				"${devnum}:${distro_bootpart} "           \
-				"${prefix}extlinux/extlinux.conf; then "  \
-			"echo Found ${prefix}extlinux/extlinux.conf; "    \
-			"run boot_extlinux; "                             \
-			"echo SCRIPT FAILED: continuing...; "             \
-		"fi\0"                                                    \
 	\
 	"boot_a_script="                                                  \
 		"load ${devtype} ${devnum}:${distro_bootpart} "           \
@@ -361,7 +368,7 @@
 		"echo Scanning ${devtype} "                               \
 				"${devnum}:${distro_bootpart}...; "       \
 		"for prefix in ${boot_prefixes}; do "                     \
-			"run scan_dev_for_extlinux; "                     \
+			SCAN_DEV_FOR_EXTLINUX                             \
 			"run scan_dev_for_scripts; "                      \
 		"done;"                                                   \
 		SCAN_DEV_FOR_EFI                                          \
