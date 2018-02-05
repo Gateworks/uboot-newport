@@ -7,6 +7,10 @@
 #ifndef __THUNDERX_81XX_H__
 #define __THUNDERX_81XX_H__
 
+#ifndef CONFIG_SPL_BUILD
+#include <config_distro_defaults.h>
+#endif
+
 #define CONFIG_SYS_VENDOR	"cavium"
 
 #define CONFIG_SPECIAL_SYNC_HANDLER
@@ -125,9 +129,6 @@
 /** Maximum total number of BGX interfaces across all nodes */
 #define CONFIG_MAX_BGX			3
 
-/** Command line configuration */
-#define CONFIG_MENU
-
 /*#define CONFIG_MENU_SHOW*/
 /** Enable icache and dcache commands */
 #define CONFIG_CMD_CACHE
@@ -137,8 +138,6 @@
 /** Enable env command */
 #define CONFIG_CMD_ENV
 #undef  CONFIG_CMD_IMLS
-
-#define CONFIG_CMD_MII
 
 /** Enable tftp command */
 #define CONFIG_CMD_TFTP
@@ -267,53 +266,23 @@
 #define UBOOT_IMG_HEAD_SIZE		0x40
 /* C80000 - 0x40 */
 
-/** Extra environment settings */
-#define NEWPORT_ENV_SETTINGS \
-	"kernel=Image\0" \
-	"prefix=newport\0" \
+#define CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG
+#define CONFIG_EXTRA_ENV_SETTINGS \
 	"console=ttyAMA0,115200n8 earlycon=pl011,0x87e028000000\0" \
-	"root=/dev/mmcblk0p1 rw rootwait\0" \
-	"cma=64M\0" \
-	"bootcmd=run boot_mmc\0" \
-	"dev=0\0" \
-	"part=2\0" \
-	\
-	"setargs=setenv bootargs \"console=${console} root=${root} " \
-		"coherent_pool=${cma} ${extra}\0" \
-	\
-	"boot_mmc=ext4load mmc ${dev}:${part} ${kernel_addr} boot/${kernel} && " \
-		"setenv root \"/dev/mmcblk${dev}p${part} rw rootwait\" && " \
-		"run setargs && booti ${kernel_addr} - ${fdtcontroladdr}\0" \
-	\
-	"boot_sata=sata init; " \
-		"ext4load sata ${dev}:1 ${kernel_addr} boot/${kernel} && " \
-		"setenv root \"/dev/sda1 rw rootwait\" && " \
-		"run setargs && booti ${kernel_addr} - ${fdtcontroladdr}\0" \
-	\
-	"boot_net=tftpboot ${kernel_addr} ${prefix}/${kernel} && " \
-		"run setargs && booti ${kernel_addr} - ${fdtcontroladdr}\0" \
-	\
-	"boot_buildroot=tftpboot ${kernel_addr} ${prefix}/buildroot/${kernel} && " \
-		"run setargs && booti ${kernel_addr} - ${fdtcontroladdr}\0" \
-	\
-	"update_firmware=tftpboot ${loadaddr} ${prefix}/${image} && " \
-		"mmc write ${loadaddr} 0 8000\0" \
-	\
-	"update_all=tftpboot ${loadaddr} ${prefix}/${image} && " \
-		"gzwrite mmc ${dev} ${loadaddr} ${filesize}\0" \
-	\
-	"update_rootfs=tftpboot ${loadaddr} ${prefix}/${image} && " \
-		"gzwrite mmc ${dev} ${loadaddr} ${filesize} 100000 1000000\0"
+	"mmcdev=0\0" \
+	"loadaddr=0x02000000\0" \
+	"kernel_addr_r=0x02000000\0" \
+	"ramdisk_addr_r=0x03000000\0" \
+	"scriptaddr=0x04000000\0" \
+	BOOTENV
 
-#define CONFIG_EXTRA_ENV_SETTINGS	\
-					NEWPORT_ENV_SETTINGS \
-					"loadaddr=020000000\0"		\
-					"ipaddr=192.168.1.1\0"		\
-					"serverip=192.168.1.146\0"	\
-					"kernel_addr=020080000\0"	\
-					"smi0mode=0.0.0\0"		\
-					"smi1mode=0.0.0\0"		\
-					"autoload=0\0"
+#define BOOT_TARGET_DEVICES(func) \
+	func(MMC, mmc, 0) \
+	func(MMC, mmc, 1) \
+	func(USB, usb, 0) \
+	func(SATA, sata, 0)
+
+#include <config_distro_bootcmd.h>
 
 /** Store U-Boot version in "ver" environment variable */
 #define CONFIG_VERSION_VARIABLE
