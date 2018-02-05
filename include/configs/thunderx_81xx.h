@@ -23,6 +23,9 @@
 /** Maximum size of image supported for bootm (and bootable FIT images) */
 #define CONFIG_SYS_BOOTM_LEN (256 << 20)
 
+/** Legacy UIMAGE format */
+#define CONFIG_IMAGE_FORMAT_LEGACY
+
 /** Enable vsnprintf support */
 #define CONFIG_SYS_VSNPRINTF
 
