@@ -302,11 +302,13 @@ void thunderx_parse_mac_addr(void)
 		if ((!ethaddr_exists(envname)) && (!ethaddr_delete(envname)))
 			printf("\n delete env %s failed", envname);
 	}
+#ifndef CONFIG_ENV_OVERWRITE
 	if (mismatch) {
 		printf("Interface configuration or mac addr count"
 			" changed, saving env...\n");
 		saveenv();
 	}
+#endif
 }
 
 int arch_fixup_memory_node(void *blob)
