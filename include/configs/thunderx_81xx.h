@@ -358,4 +358,7 @@
 #define CONFIG_CMD_TIME
 #define CONFIG_CMD_UNZIP
 
+/** disable ATF cmd */
+#undef CONFIG_CMD_ATF
+
 #endif /* __THUNDERX_81XX_H__ */
