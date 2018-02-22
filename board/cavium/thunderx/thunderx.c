@@ -107,8 +107,8 @@ bool alternate_pkg(void)
  */
 int board_late_init(void)
 {
-	char boardname[32];
-	const char *board, *str;
+	char buf[32];
+	const char *board, *serial, *str;
 	int len, node;
 
 	debug("%s()\n", __func__);
@@ -131,10 +131,21 @@ int board_late_init(void)
 		str = fdt_getprop(gd->fdt_blob, node, "BOARD-MODEL", &len);
 		debug("fdt: BOARD-MODEL str %s len %d\n", str, len);
 		if (str) {
-			strncpy(boardname, str, sizeof(boardname));
-			setenv("board", boardname);
+			strncpy(buf, str, sizeof(buf));
+			setenv("board", buf);
 		}
 		board = getenv("board");
+	}
+
+	serial = getenv("serial");
+	if (serial == NULL) {
+		node = fdt_path_offset(gd->fdt_blob, "/cavium,bdk");
+		str = fdt_getprop(gd->fdt_blob, node, "BOARD-SERIAL", &len);
+		debug("fdt: BOARD-SERIAL str %s len %d\n", str, len);
+		if (str) {
+			strncpy(buf, str, sizeof(buf));
+			setenv("serial#", buf);
+		}
 	}
 
 	if (board != NULL && !getenv("prompt")) {
@@ -150,6 +161,7 @@ int board_late_init(void)
 	}
 
 	printf("Board type: %s\n", getenv("board"));
+	printf("Serial Num: %s\n", getenv("serial#"));
 #ifdef DEBUG
 	dm_dump_all();
 #endif
