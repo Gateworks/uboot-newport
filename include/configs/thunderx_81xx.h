@@ -122,9 +122,9 @@
 
 /**
  * Only allow the Ethernet MAC address environment variable to be
- * overwritten once.
+ * overwritten always as it gets set from FDT.
  */
-#define CONFIG_OVERWRITE_ETHADDR_ONCE
+#define CONFIG_ENV_OVERWRITE
 
 /** Maximum number of BGX interfaces per CPU node */
 #define CONFIG_MAX_BGX_PER_NODE		3
