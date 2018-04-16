@@ -223,9 +223,11 @@ static int __abortboot(int bootdelay)
 	 * Check if key already pressed
 	 */
 	if (tstc()) {	/* we got a key press	*/
-		(void) getc();  /* consume input	*/
-		puts("\b\b\b 0");
-		abort = 1;	/* don't auto boot	*/
+		int c = getc();  /* consume input	*/
+		if (c != 0) {
+			puts("\b\b\b 0");
+			abort = 1;	/* don't auto boot	*/
+		}
 	}
 
 	while ((bootdelay > 0) && (!abort)) {
