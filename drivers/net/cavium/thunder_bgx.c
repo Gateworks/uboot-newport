@@ -993,8 +993,9 @@ void bgx_lmac_disable(struct bgx *bgx, uint8_t lmacid)
 static void bgx_init_hw(struct bgx *bgx)
 {
 	struct lmac *lmac;
-	int i, lmacid, count = 0;
+	int i, lmacid, count = 0, inc = 0;
 	char buf[40];
+	static qsgmii_configured = 0;
 
 	for (lmacid = 0; lmacid < MAX_LMAC_PER_BGX; lmacid++) {
 		struct lmac *tlmac;
@@ -1007,16 +1008,12 @@ static void bgx_init_hw(struct bgx *bgx)
 		switch (lmac->qlm_mode) {
 		case QLM_MODE_SGMII:
 		{
-			/* On EBB800, DLM0 and DLM1 has only one lane, so adjust the
-			   lane_to_sds for 2nd port in BGX0 to DLM1, lane0. */
+			/* EBB8000 (alternative pkg) has only lane0 present on
+			   DLM0 and DLM1, skip configuring other lanes */
 			if ((bgx->bgx_id == 0) && is_altpkg) {
-				if (lmacid >= 2)
+				if (lmacid % 2)
 					continue;
-				else if (lmacid == 1)
-					lmac->lane_to_sds = lmacid + 1;
-				else
-					lmac->lane_to_sds = lmacid;
-			} else
+			}
 				lmac->lane_to_sds = lmacid;
 			lmac->lmac_type = 0;
 			snprintf(buf, sizeof(buf),
@@ -1052,16 +1049,12 @@ static void bgx_init_hw(struct bgx *bgx)
 				 bgx->bgx_id, lmac->qlm, lmacid);
 			break;
 		case QLM_MODE_XFI:
-			/* On EBB800, DLM0 and DLM1 has only one lane, so adjust the
-			   lane_to_sds for 2nd port in BGX0 to DLM1 lane0. */
+			/* EBB8000 (alternative pkg) has only lane0 present on
+			   DLM0 and DLM1, skip configuring other lanes */
 			if ((bgx->bgx_id == 0) && is_altpkg) {
-				if (lmacid >= 2)
+				if (lmacid % 2)
 					continue;
-				else if (lmacid == 1)
-					lmac->lane_to_sds = lmacid + 1;
-				else
-					lmac->lane_to_sds = lmacid;
-			} else
+			}
 				lmac->lane_to_sds = lmacid;
 			lmac->lmac_type = 3;
 			snprintf(buf, sizeof(buf),
@@ -1078,14 +1071,12 @@ static void bgx_init_hw(struct bgx *bgx)
 				 bgx->bgx_id, lmac->qlm, lmacid);
 			break;
 		case QLM_MODE_10G_KR:
+			/* EBB8000 (alternative pkg) has only lane0 present on
+			   DLM0 and DLM1, skip configuring other lanes */
 			if ((bgx->bgx_id == 0) && is_altpkg) {
-				if (lmacid >= 2)
+				if (lmacid % 2)
 					continue;
-				else if (lmacid == 1)
-					lmac->lane_to_sds = lmacid + 1;
-				else
-					lmac->lane_to_sds = lmacid;
-			} else
+			}
 				lmac->lane_to_sds = lmacid;
 			lmac->lmac_type = 3;
 			lmac->use_training = 1;
@@ -1113,6 +1104,8 @@ static void bgx_init_hw(struct bgx *bgx)
 				 bgx->bgx_id, lmacid);
 			break;
 		case QLM_MODE_QSGMII:
+			if (qsgmii_configured)
+				continue;
 			if ((lmacid == 0) || (lmacid == 2)) {
 				count = 4;
 				printf("BGX%d QLM%d LMAC%d mode: QSGMII\n",
@@ -1128,6 +1121,7 @@ static void bgx_init_hw(struct bgx *bgx)
 							      (l->lmac_type << 8) |
 							      l->lane_to_sds);
 				}
+				qsgmii_configured = 1;
 			}
 			continue;
 		default:
@@ -1138,17 +1132,28 @@ static void bgx_init_hw(struct bgx *bgx)
 		/* Reset lmac to the unused slot */
 		if (is_bgx_port_valid(bgx->bgx_id, count) &&
 		    (lmac->qlm_mode != QLM_MODE_QSGMII)) {
+			int lmac_enable = 0;
 			tlmac = &bgx->lmac[count];
 			tlmac->lmac_type = lmac->lmac_type;
-			tlmac->lane_to_sds = lmac->lane_to_sds;
+			/* Adjust lane_to_sds based on BGX-ENABLE */
+			for (; (inc + count) < MAX_LMAC_PER_BGX; inc++) {
+				lmac_enable = bgx_board_info[bgx->bgx_id].lmac_enable[count + inc];
+				if (lmac_enable)
+					break;
+			}
+
+			if ((inc != 0) && (inc < MAX_LMAC_PER_BGX) && lmac_enable && (inc != count))
+				tlmac->lane_to_sds = lmac->lane_to_sds + abs(inc - count);
+			else
+				tlmac->lane_to_sds = lmac->lane_to_sds;
 			tlmac->qlm = lmac->qlm;
 			tlmac->qlm_mode = lmac->qlm_mode;
 
 			printf("%s", buf);
 			/* Initialize lmac_type and lane_to_sds */
 			bgx_reg_write(bgx, count, BGX_CMRX_CFG,
-				      (lmac->lmac_type << 8) |
-				      lmac->lane_to_sds);
+				      (tlmac->lmac_type << 8) |
+				      tlmac->lane_to_sds);
 			count += 1;
 		}
 	}
@@ -1202,8 +1207,8 @@ static void bgx_get_qlm_mode(struct bgx *bgx)
 
 		lmac_type = bgx_reg_read(bgx, index, BGX_CMRX_CFG);
 		lmac->lmac_type = (lmac_type >> 8) & 0x07;
-		debug("bgx_get_qlm_mode:%d:%d: lmac_type = %d\n", bgx->bgx_id,
-				lmacid, lmac->lmac_type);
+		debug("bgx_get_qlm_mode:%d:%d: lmac_type = %d, altpkg = %d\n", bgx->bgx_id,
+				lmacid, lmac->lmac_type, is_altpkg);
 
 		train_en = (readq(CSR_PA(0, GSERX_SCRATCH(lmac->qlm))) & 0xf);
 
@@ -1218,7 +1223,7 @@ static void bgx_get_qlm_mode(struct bgx *bgx)
 				continue;
 				} else {
 				if ((bgx->bgx_id == 0) && is_altpkg) {
-					if (lmacid >= 2)
+					if (lmacid % 2)
 						continue;
 				}
 				lmac->qlm_mode = QLM_MODE_SGMII;
@@ -1246,7 +1251,7 @@ static void bgx_get_qlm_mode(struct bgx *bgx)
 			break;
 		case BGX_MODE_XFI:
 			if ((bgx->bgx_id == 0) && is_altpkg) {
-				if (lmacid >= 2)
+				if (lmacid % 2)
 					continue;
 			}
 			if (((lmacid < 2) && (train_en & (1 << lmacid)))
@@ -1278,6 +1283,14 @@ static void bgx_get_qlm_mode(struct bgx *bgx)
 			}
 		break;
 		case BGX_MODE_QSGMII:
+			/* If QLM is configured as QSGMII, use lmac0 */
+			if (CAVIUM_IS_MODEL(CAVIUM_CN83XX)
+			    && (lmacid == 2)
+			    && (bgx->bgx_id != 3)) {
+				//lmac->qlm_mode = QLM_MODE_DISABLED;
+				continue;
+			}
+
 			if ((lmacid == 0) || (lmacid == 2)) {
 				lmac->qlm_mode = QLM_MODE_QSGMII;
 				debug("BGX%d QLM%d LMAC%d mode: QSGMII\n",
@@ -1291,7 +1304,8 @@ static void bgx_get_qlm_mode(struct bgx *bgx)
 }
 
 void bgx_set_board_info(int bgx_id, int *mdio_bus,
-			int *phy_addr, bool *autoneg_dis, bool *lmac_reg)
+			int *phy_addr, bool *autoneg_dis, bool *lmac_reg,
+			bool *lmac_enable)
 {
 	unsigned int i;
 
@@ -1300,19 +1314,21 @@ void bgx_set_board_info(int bgx_id, int *mdio_bus,
 		bgx_board_info[bgx_id].phy_info[i].mdio_bus = mdio_bus[i];
 		bgx_board_info[bgx_id].phy_info[i].autoneg_dis = autoneg_dis[i];
 		bgx_board_info[bgx_id].lmac_reg[i] = lmac_reg[i];
+		bgx_board_info[bgx_id].lmac_enable[i] = lmac_enable[i];
 		debug("bgx_set_board_info bgx_id %d lmac %d phy_addr 0x%x mdio bus %d\n"
-		      "autoneg_dis %d lmac_reg %d\n", bgx_id, i,
+		      "autoneg_dis %d lmac_reg %d, lmac_enable = %d\n", bgx_id, i,
 			bgx_board_info[bgx_id].phy_info[i].phy_addr,
 			bgx_board_info[bgx_id].phy_info[i].mdio_bus,
 			bgx_board_info[bgx_id].phy_info[i].autoneg_dis,
-			bgx_board_info[bgx_id].lmac_reg[i]);
+			bgx_board_info[bgx_id].lmac_reg[i],
+			bgx_board_info[bgx_id].lmac_enable[i]);
 	}
 }
 
 
 int thunderx_bgx_remove(struct udevice *dev)
 {
-	int lmac;
+	int lmacid;
 	u64 cfg;
 	int count = MAX_LMAC_PER_BGX;
 	struct bgx *bgx = dev_get_priv(dev);
@@ -1323,14 +1339,24 @@ int thunderx_bgx_remove(struct udevice *dev)
 	if (bgx->is_rgx)
 		count = 1;
 
-	for (lmac = 0; lmac < count; lmac++) {
-		cfg = bgx_reg_read(bgx, lmac, BGX_CMRX_CFG);
+	for (lmacid = 0; lmacid < count; lmacid++) {
+		struct lmac *lmac;
+		lmac = &bgx->lmac[lmacid];
+		cfg = bgx_reg_read(bgx, lmacid, BGX_CMRX_CFG);
 		cfg &= ~(CMR_PKT_RX_EN | CMR_PKT_TX_EN);
-		bgx_reg_write(bgx, lmac, BGX_CMRX_CFG, cfg);
+		bgx_reg_write(bgx, lmacid, BGX_CMRX_CFG, cfg);
 
-		debug("%s disabling bgx%d lmac%d\n",
-			__func__, bgx->bgx_id, lmac);
-		bgx_lmac_disable(bgx, lmac);
+		/* Disable PCS for 1G interface */
+		if ((lmac->lmac_type == BGX_MODE_SGMII)
+		    || (lmac->lmac_type == BGX_MODE_QSGMII)) {
+			cfg = bgx_reg_read(bgx, lmacid, BGX_GMP_PCS_MRX_CTL);
+			cfg |= PCS_MRX_CTL_PWR_DN;
+			bgx_reg_write(bgx, lmacid, BGX_GMP_PCS_MRX_CTL, cfg);
+		}
+
+		debug("%s disabling bgx%d lmacid%d\n",
+			__func__, bgx->bgx_id, lmacid);
+		bgx_lmac_disable(bgx, lmacid);
 	}
 	return 0;
 }
@@ -1393,26 +1419,19 @@ int thunderx_bgx_probe(struct udevice *dev)
 		/* BGX3 (DLM4), has only 2 lanes */
 		if (CAVIUM_IS_MODEL(CAVIUM_CN83XX) && (bgx_idx == 3) && lmac >= 2)
 			continue;
-		if (is_altpkg && (lmac == 2) && (bgx_idx == 0)) {
-			qlm[lmac - 1] = get_qlm_for_bgx(node, bgx_idx, lmac);
-			debug("qlm[%d] = %d\n", lmac, qlm[lmac-1]);
-		} else {
-			qlm[lmac + 0] = get_qlm_for_bgx(node, bgx_idx, lmac);
-			/* Each DLM has 2 lanes, configure both lanes with
-			   same qlm configuration */
-			if (inc == 2)
-				qlm[lmac + 1] = qlm[lmac];
+		qlm[lmac + 0] = get_qlm_for_bgx(node, bgx_idx, lmac);
+		/* Each DLM has 2 lanes, configure both lanes with
+		   same qlm configuration */
+		if (inc == 2)
+			qlm[lmac + 1] = qlm[lmac];
 		debug("qlm[%d] = %d\n", lmac, qlm[lmac]);
-		}
 	}
 
-#if 0
 	/* A BGX can take 1 or 2 DLMs, if both the DLMs are not configured
 	   as BGX, then return, nothing to initialize */
 	if (CAVIUM_IS_MODEL(CAVIUM_CN81XX))
 		if ((qlm[0] == -1) && (qlm[2] == -1))
 			return -ENODEV;
-#endif
 
 	/* MAP configuration registers */
 	for (lmac = 0; lmac < MAX_LMAC_PER_BGX; lmac++) {
