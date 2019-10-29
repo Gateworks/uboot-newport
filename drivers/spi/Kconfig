@@ -175,6 +175,12 @@ config MVEBU_A3700_SPI
 	  used to access the SPI NOR flash on platforms embedding this
 	  Marvell IP core.
 
+config OCTEONTX_SPI
+	bool "OcteonTX SPI driver"
+	help
+	  Enable the OcteonTX SPI driver. This driver can be used to
+	  access the SPI NOR flash on OcteonTX or OcteonTX2 SoC platforms.
+
 config PIC32_SPI
 	bool "Microchip PIC32 SPI driver"
 	depends on MACH_PIC32
