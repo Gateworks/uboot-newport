@@ -675,7 +675,8 @@ static int pci_find_and_bind_driver(struct udevice *parent,
 	      find_id->vendor, find_id->device);
 
 	/* Determine optional OF node */
-	pci_dev_find_ofnode(parent, bdf, &node);
+	if (ofnode_valid(dev_ofnode(parent)))
+		pci_dev_find_ofnode(parent, bdf, &node);
 
 	start = ll_entry_start(struct pci_driver_entry, pci_driver_entry);
 	n_ents = ll_entry_count(struct pci_driver_entry, pci_driver_entry);
