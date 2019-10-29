@@ -471,6 +471,17 @@
 #define  PCI_EXP_DEVCAP_FLR     0x10000000 /* Function Level Reset */
 #define PCI_EXP_DEVCTL		8	/* Device Control */
 #define  PCI_EXP_DEVCTL_BCR_FLR 0x8000  /* Bridge Configuration Retry / FLR */
+/* Single Root I/O Virtualization Registers */
+#define PCI_SRIOV_CAP		0x04	/* SR-IOV Capabilities */
+#define PCI_SRIOV_CTRL		0x08	/* SR-IOV Control */
+#define  PCI_SRIOV_CTRL_VFE	0x01	/* VF Enable */
+#define  PCI_SRIOV_CTRL_MSE	0x08	/* VF Memory Space Enable */
+#define PCI_SRIOV_INITIAL_VF	0x0c	/* Initial VFs */
+#define PCI_SRIOV_TOTAL_VF	0x0e	/* Total VFs */
+#define PCI_SRIOV_NUM_VF	0x10	/* Number of VFs */
+#define PCI_SRIOV_VF_OFFSET	0x14	/* First VF Offset */
+#define PCI_SRIOV_VF_STRIDE	0x16	/* Following VF Stride */
+#define PCI_SRIOV_VF_DID	0x1a	/* VF Device ID */
 
 /* Include the ID list */
 
@@ -864,6 +875,10 @@ struct pci_child_platdata {
 	unsigned short vendor;
 	unsigned short device;
 	unsigned int class;
+
+	bool is_virtfn;
+	struct udevice *pfdev;
+	int virtid;
 };
 
 /* PCI bus operations */
@@ -1173,6 +1188,9 @@ int pci_generic_mmap_read_config(
 	uint offset,
 	ulong *valuep,
 	enum pci_size_t size);
+
+int pci_sriov_init(struct udevice *pdev, int vf_en);
+int pci_sriov_get_totalvfs(struct udevice *pdev);
 
 #ifdef CONFIG_DM_PCI_COMPAT
 /* Compatibility with old naming */
