@@ -506,6 +506,11 @@ static int ahci_fill_sg(struct ahci_uc_priv *uc_priv, u8 port,
 		ahci_sg->addr =
 		    cpu_to_le32((unsigned long) buf + i * MAX_DATA_BYTE_COUNT);
 		ahci_sg->addr_hi = 0;
+#ifdef CONFIG_PHYS_64BIT
+		ahci_sg->addr_hi =
+		    cpu_to_le32((u32)(((u64)(buf + i * MAX_DATA_BYTE_COUNT)
+				      >> 16) >> 16));
+#endif
 		ahci_sg->flags_size = cpu_to_le32(0x3fffff &
 					  (buf_len < MAX_DATA_BYTE_COUNT
 					   ? (buf_len - 1)
