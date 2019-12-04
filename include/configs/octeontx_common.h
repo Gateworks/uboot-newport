@@ -78,6 +78,7 @@
 /** Environment defines */
 #define CONFIG_ENV_SIZE			0x8000
 #define CONFIG_ENV_OFFSET		0xf00000
+#define CONFIG_ENV_OFFSET_REDUND	(CONFIG_ENV_OFFSET + 0x8000)
 #if defined(CONFIG_ENV_IS_IN_MMC)
 #define CONFIG_SYS_MMC_ENV_DEV		0
 #elif defined(CONFIG_ENV_IS_IN_SPI_FLASH)
