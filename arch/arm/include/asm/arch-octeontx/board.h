@@ -112,6 +112,7 @@ union rst_boot {
 void mem_map_fill(void);
 int octeontx_board_has_pmp(void);
 const char *fdt_get_board_model(void);
+const char *fdt_get_board_serial(void);
 void fdt_parse_phy_info(void);
 void fdt_board_get_ethaddr(int bgx, int lmac, unsigned char *eth);
 

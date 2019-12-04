@@ -98,7 +98,7 @@ void board_late_probe_devices(void)
  */
 int board_late_init(void)
 {
-	char boardname[32];
+	char prompt[32];
 
 	/*
 	 * Try to cleanup ethaddr env variables, this is needed
@@ -106,14 +106,17 @@ int board_late_init(void)
 	 */
 	octeontx_cleanup_ethaddr();
 
-	snprintf(boardname, sizeof(boardname), "%s> ", fdt_get_board_model());
-	env_set("prompt", boardname);
+	snprintf(prompt, sizeof(prompt), "%s> ", fdt_get_board_model());
+	env_set("prompt", prompt);
+	env_set("board", fdt_get_board_model());
+	env_set("serial#", fdt_get_board_serial());
 
 	set_working_fdt_addr(env_get_hex("fdtcontroladdr", fdt_base_addr));
 
 #ifdef CONFIG_NET_OCTEONTX
 	board_late_probe_devices();
 #endif
+
 	return 0;
 }
 
@@ -131,6 +134,7 @@ int show_board_info(void)
 	printf("OcteonTX %s ARM V8 Core\n", str);
 
 	printf("Board: %s\n", fdt_get_board_model());
+	printf("Serial:%s\n", fdt_get_board_serial());
 
 	return 0;
 }

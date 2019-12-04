@@ -185,6 +185,36 @@ const char *fdt_get_board_model(void)
 	return str;
 }
 
+const char *fdt_get_board_serial(void)
+{
+	const void *fdt = gd->fdt_blob;
+	int ret, node, len = 16;
+	const char *str = NULL;
+
+	if (!fdt) {
+		printf("ERROR: %s: no valid device tree found\n", __func__);
+		return NULL;
+	}
+
+	ret = fdt_check_header(fdt);
+	if (ret < 0) {
+		printf("fdt: %s\n", fdt_strerror(ret));
+		return NULL;
+	}
+
+	node = fdt_path_offset(fdt, "/cavium,bdk");
+	if (node < 0) {
+		printf("%s: /cavium,bdk is missing from device tree: %s\n",
+		       __func__, fdt_strerror(node));
+		return NULL;
+	}
+
+	str = fdt_getprop(fdt, node, "BOARD-SERIAL", &len);
+	if (!str)
+		printf("Error: cannot retrieve board serial from fdt\n");
+	return str;
+}
+
 void fdt_board_get_ethaddr(int bgx, int lmac, unsigned char *eth)
 {
 	const void *fdt = gd->fdt_blob;
