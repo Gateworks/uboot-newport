@@ -8,10 +8,18 @@
 #ifndef __OCTEONTX_COMMON_H__
 #define __OCTEONTX_COMMON_H__
 
+#ifndef CONFIG_SPL_BUILD
+#define BOOT_TARGET_DEVICES(func) \
+        func(MMC, mmc, 0) \
+        func(MMC, mmc, 1) \
+        func(USB, usb, 0) \
+        func(SCSI, scsi, 0)
+
+#include <config_distro_bootcmd.h>
+#endif
+
 /* Generic Timer Definitions */
 #define COUNTER_FREQUENCY		(0x1800000)	/* 24MHz */
-
-#define CONFIG_SUPPORT_RAW_INITRD
 
 /** Maximum size of image supported for bootm (and bootable FIT images) */
 #define CONFIG_SYS_BOOTM_LEN		(256 << 20)
@@ -61,7 +69,11 @@
 /** Extra environment settings */
 #define CONFIG_EXTRA_ENV_SETTINGS	\
 					"loadaddr=040080000\0"	\
-					"autoload=0\0"
+					"autoload=0\0" \
+					"kernel_addr_r=0x02000000\0" \
+					"ramdisk_addr_r=0x03000000\0" \
+					"scriptaddr=0x04000000\0" \
+					BOOTENV
 
 /** Environment defines */
 #define CONFIG_ENV_SIZE			0x8000
