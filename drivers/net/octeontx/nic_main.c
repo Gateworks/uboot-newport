@@ -78,7 +78,7 @@ static void nic_send_msg_to_vf(struct nicpf *nic, int vf, union nic_mbx *mbx)
 static void nic_mbx_send_ready(struct nicpf *nic, int vf)
 {
 	union nic_mbx mbx = {};
-	int bgx_idx, lmac, timeout = 5, link = -1;
+	int bgx_idx, lmac, timeout = 1, link = -1;
 	const u8 *mac;
 
 	mbx.nic_cfg.msg = NIC_MBOX_MSG_READY;
