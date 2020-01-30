@@ -1458,10 +1458,6 @@ int octeontx_bgx_probe(struct udevice *dev)
 #ifdef OCTEONTX_XCV
 	/* Use FAKE BGX2 for RGX interface */
 	if ((((uintptr_t)bgx->reg_base >> 24) & 0xf) == 0x8) {
-		int np;
-		const char* phy_mode;
-		int phy_interface = -1;
-
 		bgx->bgx_id = 2;
 		bgx->is_rgx = true;
 		for (lmac = 0; lmac < MAX_LMAC_PER_BGX; lmac++) {
@@ -1472,13 +1468,7 @@ int octeontx_bgx_probe(struct udevice *dev)
 				bgx->lmac[lmac].qlm = -1;
 			}
 		}
-		np = fdt_first_subnode(gd->fdt_blob, dev_of_offset(dev));
-		np = fdtdec_lookup_phandle(gd->fdt_blob, np, "phy-handle");
-		phy_mode = fdt_getprop(gd->fdt_blob, np, "phy-mode", NULL);
-		phy_interface = phy_get_interface_by_name(phy_mode);
-		if (phy_interface == -1)
-			phy_interface = PHY_INTERFACE_MODE_RGMII;
-		xcv_init_hw(phy_interface);
+		xcv_init_hw();
 		goto skip_qlm_config;
 	}
 #endif

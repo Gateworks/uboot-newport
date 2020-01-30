@@ -213,7 +213,7 @@ void bgx_add_dmac_addr(u64 dmac, int node, int bgx_idx, int lmac);
 void bgx_get_count(int node, int *bgx_count);
 int bgx_get_lmac_count(int node, int bgx);
 void bgx_print_stats(int bgx_idx, int lmac);
-void xcv_init_hw(int phy_mode);
+void xcv_init_hw(void);
 void xcv_setup_link(bool link_up, int link_speed);
 
 #undef LINK_INTR_ENABLE
