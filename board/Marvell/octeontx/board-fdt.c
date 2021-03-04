@@ -271,8 +271,8 @@ int arch_fixup_memory_node(void *blob)
 
 int ft_board_setup(void *blob, struct bd_info *bd)
 {
-	/* remove "cavium, bdk" node from DT */
-	int ret = 0, offset;
+	int offset, val, i;
+	int ret = 0;
 
 	ret = fdt_check_header(blob);
 	if (ret < 0) {
@@ -280,16 +280,91 @@ int ft_board_setup(void *blob, struct bd_info *bd)
 		return ret;
 	}
 
-	if (blob) {
-		/* delete cavium,bdk node if it exists */
-		offset = fdt_path_offset(blob, "/cavium,bdk");
-		if (offset >= 0) {
-			ret = fdt_del_node(blob, offset);
-			if (ret < 0) {
-				printf("WARNING : could not remove bdk node\n");
-				return ret;
+	/* delete cavium,bdk node if it exists */
+	offset = fdt_path_offset(blob, "/cavium,bdk");
+	if (offset >= 0) {
+		ret = fdt_del_node(blob, offset);
+		if (ret < 0) {
+			printf("WARNING : could not remove bdk node\n");
+			return ret;
+		}
+		debug("%s deleted bdk node\n", __func__);
+	} else {
+		const char *mmc[] = {
+			"/soc@0/pci@848000000000/mrml-bridge0@1,0/mmc@1,4/mmc-slot@0",
+			"/soc@0/pci@848000000000/mrml-bridge0@1,0/mmc@1,4/mmc-slot@1"
+		};
+		const char *pem[] = {
+			"/soc@0/pci@87e0c0000000",
+			"/soc@0/pci@87e0c1000000",
+			"/soc@0/pci@87e0c2000000",
+		};
+
+		/* disable PEMs */
+		printf("updating PCI\n");
+		for (i = 0; i < ARRAY_SIZE(pem); i++) {
+			offset = fdt_path_offset(gd->fdt_blob, pem[i]);
+			if (offset < 0) {
+				printf("disabling PEM%d\n", i);
+				offset = fdt_path_offset(blob, pem[i]);
+				if (offset)
+					fdt_del_node(blob, offset);
 			}
-			debug("%s deleted bdk node\n", __func__);
+		}
+
+		/* update MMC slots */
+		printf("updating MMC\n");
+		for (i = 0; i < ARRAY_SIZE(mmc); i++) {
+			offset = fdt_path_offset(gd->fdt_blob, mmc[i]);
+			if (offset >= 0) {
+				val = fdt_getprop_u32_default(gd->fdt_blob, mmc[i], "bus-width", 0);
+				offset = fdt_path_offset(blob, mmc[i]);
+				if (offset < 0)
+					continue;
+				switch (val) {
+				case 4: /* microSD */
+					printf("configuring mmc-slot%d for microSD\n", i);
+					fdt_setprop_u32(blob, offset, "bus-width", 4);
+					fdt_setprop(blob, offset, "cap-sd-highspeed", NULL, 0);
+					fdt_setprop(blob, offset, "no-mmc", NULL, 0);
+					break;
+				case 8: /* eMMC */
+					printf("configuring mmc-slot%d for eMMC\n", i);
+					fdt_setprop_u32(blob, offset, "bus-width", 8);
+					fdt_setprop(blob, offset, "mmc-ddr-3_3v", NULL, 0);
+					fdt_setprop(blob, offset, "cap-mmc-highspeed", NULL, 0);
+					fdt_setprop(blob, offset, "no-sd", NULL, 0);
+					break;
+				}
+			} else {
+				printf("disabling mmc-slot%d\n", i);
+				offset = fdt_path_offset(blob, mmc[i]);
+				if (offset)
+					fdt_del_node(blob, offset);
+			}
+		}
+
+		/* update refclkuaa from U-Boot dt */
+		val = fdt_getprop_u32_default(gd->fdt_blob, "/soc@0/refclkuaa", "clock-frequency", 0);
+		offset = fdt_path_offset(blob, "/soc@0/refclkuaa");
+		if (offset >= 0 && val) {
+			printf("updating refclkuaa frequency:%d\n", val);
+			fdt_setprop_inplace_u32(blob, offset, "clock-frequency", val);
+		}
+
+		/* update sclk from U-Boot dt */
+		val = fdt_getprop_u32_default(gd->fdt_blob, "/soc@0/sclk", "clock-frequency", 0);
+		offset = fdt_path_offset(blob, "/soc@0/sclk");
+		if (offset >= 0 && val) {
+			printf("updating sclk frequency:%d\n", val);
+			fdt_setprop_inplace_u32(blob, offset, "clock-frequency", val);
+		}
+
+		/* add board and system-serial prop */
+		offset = fdt_path_offset(blob, "/");
+		if (offset >= 0) {
+			fdt_setprop_string(blob, 0, "system-serial", fdt_get_board_serial());
+			fdt_setprop_string(blob, 0, "board", fdt_get_board_model());
 		}
 	}
 
