@@ -3,6 +3,7 @@
  * Copyright (C) 2018 Marvell International Ltd.
  */
 
+#include <command.h>
 #include <config.h>
 #include <dm.h>
 #include <errno.h>
@@ -359,8 +360,13 @@ static int bgx_lmac_sgmii_init(struct bgx *bgx, int lmacid)
 	if (lmac->qlm_mode == QLM_MODE_SGMII) {
 		if (bgx_poll_reg(bgx, lmacid, BGX_GMP_PCS_MRX_STATUS,
 				 PCS_MRX_STATUS_AN_CPT, false)) {
-			printf("BGX AN_CPT not completed\n");
+			printf("BGX AN_CPT not completed for SGMII link\n");
+#if 0
 			return -1;
+#else
+			puts ("resetting ...\n");
+			run_command("gsc sleep 2", 0);
+#endif
 		}
 	}
 
