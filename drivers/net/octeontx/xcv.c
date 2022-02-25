@@ -24,8 +24,25 @@
 /* Initialize XCV block */
 void xcv_init_hw(void)
 {
-	union xcvx_reset reset;
 	union xcvx_dll_ctl xcv_dll_ctl;
+	union xcvx_comp_ctl comp_ctl;
+	union xcvx_reset reset;
+	int ndrv = -1, pdrv = -1;
+	struct fdt_pci_addr addr;
+	ofnode node;
+	u32 reg;
+
+	node = ofnode_by_compatible(ofnode_null(), "cavium,thunder-8890-bgx");
+	while (ofnode_valid(node)) {
+		if (!ofnode_read_pci_addr(node, FDT_PCI_SPACE_CONFIG, "reg", &addr) && addr.phys_hi == 0x9000) {
+			if (!ofnode_read_u32(node, "cavium,drv_nctl", &reg))
+				ndrv = reg;
+			if (!ofnode_read_u32(node, "cavium,drv_pctl", &reg))
+				pdrv = reg;
+			break;
+		}
+		node = ofnode_by_compatible(node, "cavium,thunder-8890-bgx");
+	}
 
 	/* Take the DLL out of reset */
 	reset.u = readq(XCVX_BASE + XCVX_RESET(0));
@@ -46,6 +63,8 @@ void xcv_init_hw(void)
 	xcv_dll_ctl.s.clkrx_byp = 1;
 	xcv_dll_ctl.s.clktx_byp = 0;
 	writeq(xcv_dll_ctl.u, XCVX_BASE + XCVX_DLL_CTL(0));
+	printf("XCV_DLL_CTL: TX_BYP=%d RX_BYP=%d\n",
+		xcv_dll_ctl.s.clktx_byp, xcv_dll_ctl.s.clkrx_byp);
 
 	/* Enable the compensation controller */
 	reset.u = readq(XCVX_BASE + XCVX_RESET(0));
@@ -57,6 +76,16 @@ void xcv_init_hw(void)
 	 * machine lock.
 	 */
 	udelay(100);
+
+	if (ndrv != -1 && pdrv != -1) {
+		comp_ctl.u = readq(XCVX_BASE + XCVX_COMP_CTL(0));
+		comp_ctl.s.drv_byp = 1;
+		comp_ctl.s.drv_pctl = pdrv;
+		comp_ctl.s.drv_nctl = ndrv;
+		writeq(comp_ctl.u, XCVX_BASE + XCVX_COMP_CTL(0));
+		printf("XCV_COMP_CTL: DRV_BYP=%d DRV_PCTL=%d DRV_NCTL=%d\n",
+			comp_ctl.s.drv_byp, comp_ctl.s.drv_pctl, comp_ctl.s.drv_nctl);
+	}
 
 	/* Enable the XCV block */
 	reset.u = readq(XCVX_BASE + XCVX_RESET(0));
