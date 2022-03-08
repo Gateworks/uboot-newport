@@ -13,7 +13,6 @@
 #include <log.h>
 #include <netdev.h>
 #include <pci_ids.h>
-#include <phy.h>
 #include <asm/io.h>
 #include <linux/compiler.h>
 #include <linux/libfdt.h>
@@ -148,30 +147,6 @@ int board_late_init(void)
 int checkboard(void)
 {
 	printf("Board: %s\n", fdt_get_board_model());
-
-	return 0;
-}
-
-int board_phy_config(struct phy_device *phydev)
-{
-	unsigned short val;
-	u32 rx_delay, tx_delay;
-
-	switch (phydev->phy_id) {
-	case 0xd565a401: /* MaxLinear GPY111 */
-		puts("GPY111 ");
-		rx_delay = 1500;
-		tx_delay = 500;
-		val = phy_read(phydev, MDIO_DEVAD_NONE, 0x17);
-		val &= ~((0x7 << 12) | (0x7 << 8));
-		val |= (rx_delay / 500) << 12;
-		val |= (tx_delay / 500) << 8;
-		phy_write(phydev, MDIO_DEVAD_NONE, 0x17, val);
-		break;
-	}
-
-	if (phydev->drv->config)
-		phydev->drv->config(phydev);
 
 	return 0;
 }
