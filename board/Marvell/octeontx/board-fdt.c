@@ -271,13 +271,29 @@ int arch_fixup_memory_node(void *blob)
 
 int ft_board_setup(void *blob, struct bd_info *bd)
 {
-	int offset, val, i;
+	int offset, node, val, i;
 	int ret = 0;
 
 	ret = fdt_check_header(blob);
 	if (ret < 0) {
 		printf("ERROR: %s\n", fdt_strerror(ret));
 		return ret;
+	}
+
+	/* disable gpio-hog nodes so Linux does not re-configure them */
+	i = fdt_node_offset_by_compatible(blob, -1, "cavium,thunder-8890-gpio");
+	if (i) {
+		fdt_for_each_subnode(node, blob, i) {
+			if (fdt_get_property(blob, node, "gpio-hog", NULL))
+				fdt_status_disabled(blob, node);
+		}
+	}
+	i = fdt_node_offset_by_compatible(blob, -1, "nxp,pca9555");
+	if (i) {
+		fdt_for_each_subnode(node, blob, i) {
+			if (fdt_get_property(blob, node, "gpio-hog", NULL))
+				fdt_status_disabled(blob, node);
+		}
 	}
 
 	/* delete cavium,bdk node if it exists */
